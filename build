@@ -1,0 +1,6 @@
+#!/bin/bash -x
+rm *.o
+rm *.csv
+rm test
+gcc -Wall -g -c *.c
+gcc -Wall -g *.o -o test -lm
