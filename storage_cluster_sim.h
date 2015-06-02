@@ -276,18 +276,20 @@ extern unsigned chunk_seq (chunk_put_handle_t cp); // utility to fetch seq #
 
 // Common Target event handlers - in common_target.c
 extern void handle_disk_write_completion (const event_t *e);
-extern void init_targets(unsigned n_targets);
-extern void release_targets(void);
 
 // Replicast-specific Target event handlers - in replicast_target.c
 
 extern void handle_rep_chunk_put_request_received (const event_t *e);
 extern void handle_rep_chunk_put_accept_received (const event_t *e);
 extern void handle_rep_rendezvous_xfer_received (const event_t *e);
+extern void init_rep_targets(unsigned n_targets);
+extern void release_rep_targets(void);
 
 // Consistent Hash / TCP specific Target event handlers
 extern void handle_tcp_xmit_received (const event_t *e);
 extern void handle_tcp_reception_complete (const event_t *e);
+extern void init_nonrep_targets(unsigned n_targets);
+extern void release_nonrep_targets(void);
 #endif
 
 
