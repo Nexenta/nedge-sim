@@ -322,7 +322,8 @@ static void simulate (void)
 
     next_object_put_event = rand_r(&put_seed) % (2*derived.ticks_per_object);
     
-    printf("Total Chunks %d\n",derived.n_tracked_puts);
+    printf("Total %dKB Chunks %d.\n",config.chunk_size/1024,
+           derived.n_tracked_puts);
     e = (const event_t *)ehead.tllist.next;
     
     for (n_tracked_completions = 0;
@@ -411,27 +412,26 @@ int main(int argc, const char * argv[]) {
     
     // TODO: accept command line customization of config
     derive_config();
+    bool nr_enabled = false;
     log_f = open_outf("log");
     bid_f = open_outf("bid");
 
-    
     fprintf(log_f,"Simulating Replicast\n");
     fprintf(bid_f,"Simulating Replicast\n");
     replicast = true;
-    init_targets(derived.n_targets);
+    init_rep_targets(derived.n_targets);
     simulate();
-    release_targets();
-#if 0
+    release_rep_targets();
+    if (nr_enabled) {
     // TODO: switch log files?
-    next_object_put = object_put_time;
-    seed_object_puts();
-    fprintf(logf,"Simulating Non-replicast\n");
-    fprintf(bidf,"Simulating Non-replicast\n");
-    replicast = false;
-    init_targets(derived.n_targets);
-    simulate();
-    release_targets();
-#endif
+    // TODO: reset various tallies
+        fprintf(log_f,"Simulating Non-replicast\n");
+        fprintf(bid_f,"Simulating Non-replicast\n");
+        replicast = false;
+        init_nonrep_targets(derived.n_targets);
+        simulate();
+        release_nonrep_targets();
+    }
     fclose(log_f);
     fclose(bid_f);
     exit(0);

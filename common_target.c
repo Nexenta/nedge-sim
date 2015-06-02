@@ -7,32 +7,6 @@
 //
 
 #include "storage_cluster_sim.h"
-#include "target.h"
-
-target_t *t;
-
-void init_targets(unsigned n_targets)
-//
-// Initialize the target subsystem, specifically the irhead for each
-// entry in the target_t array 't' must be set to empty.
-// Setting the ir_head to point to itself makes an empty list.
-//
-{
-    unsigned n;
-    
-    t = (target_t *)calloc(n_targets,sizeof(target_t));
-    assert(t);
-    
-    for (n=0;n != n_targets;++n)
-        t[n].ir_head.tllist.next = t[n].ir_head.tllist.prev =
-        &t[n].ir_head.tllist;
-}
-
-void release_targets (void)
-{
-    free(t);
-    t = (target_t *)0;
-}
 
 void handle_disk_write_completion (const event_t *e)
 //

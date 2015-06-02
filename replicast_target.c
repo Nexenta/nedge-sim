@@ -7,9 +7,45 @@
 //
 
 #include "storage_cluster_sim.h"
-#include "target.h"
 
 static unsigned total_reservations = 0;
+
+typedef struct rep_target_t {
+    inbound_reservation_t ir_head;
+    unsigned ir_queue_depth;
+    tick_t last_disk_write_completion;
+    unsigned mbz;
+} rep_target_t;
+//
+// A struct target represents the target specific data that each individual
+// target would have stored separately. This includes the queue of inbound
+// reservations and when the last disk write completion would have occurred.
+//
+
+static rep_target_t *rept;
+
+void init_rep_targets(unsigned n_targets)
+//
+// Initialize the target subsystem, specifically the irhead for each
+// entry in the target_t array 't' must be set to empty.
+// Setting the ir_head to point to itself makes an empty list.
+//
+{
+    unsigned n;
+    
+    rept = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
+    assert(rept);
+    
+    for (n=0;n != n_targets;++n)
+        rept[n].ir_head.tllist.next = rept[n].ir_head.tllist.prev =
+        &rept[n].ir_head.tllist;
+}
+
+void release_rep_targets (void)
+{
+    free(rept);
+    rept = (rep_target_t *)0;
+}
 
 static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
@@ -29,7 +65,7 @@ static void make_bid (unsigned target_num,
         (inbound_reservation_t *)calloc(1,sizeof(inbound_reservation_t));
     inbound_reservation_t *p;
     inbound_reservation_t *insert_after;
-    target_t *tp = t + target_num;
+    rep_target_t *tp = rept + target_num;
 
     assert(start);
     assert(ir);
@@ -97,7 +133,7 @@ void handle_rep_chunk_put_request_received (const event_t *e)
 }
 
 static inbound_reservation_t *ir_find_by_cp (
-        target_t *tp,
+        rep_target_t *tp,
         chunk_put_handle_t cp
 )
 //
@@ -141,7 +177,7 @@ static bool target_in_accepted_list (
     return false;
 }
 
-static void ir_remove (target_t *tp,inbound_reservation_t *ir)
+static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
 //
 // remove inbound_reservation from the target linked list holding.
 // decrement target's count of inbound_reservations
@@ -176,17 +212,17 @@ void handle_rep_chunk_put_accept_received (const event_t *e)
 //
 {
     const rep_chunk_put_accept_t *cpa = (const rep_chunk_put_accept_t *)e;
-    target_t *tp;
+    rep_target_t *tp;
     inbound_reservation_t *ir;
 
     assert(replicast);
     assert(cpa);
     assert(cpa->target_num < derived.n_targets);
     assert(chunk_seq(cpa->cp));
-    tp = t + cpa->target_num;
+    tp = rept + cpa->target_num;
     ir = ir_find_by_cp (tp,cpa->cp);
     assert(ir);
-    tp = t + cpa->target_num;
+    tp = rept + cpa->target_num;
     if (target_in_accepted_list(cpa->target_num,cpa->accepted_target)) {
         ir->tllist.time = cpa->window_start;
         ir->lim = cpa->window_lim;
@@ -215,7 +251,7 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
 {
     const rep_rendezvous_xfer_received_t *rtr =
         (const rep_rendezvous_xfer_received_t *)e;
-    target_t *tp = t + rtr->target_num;
+    rep_target_t *tp = rept + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
     tick_t write_start;
     disk_write_completion_t dwc;
