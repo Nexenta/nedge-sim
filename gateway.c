@@ -229,7 +229,7 @@ static bool acceptable_bid_set (const bid_t *bids,
 }
 
 #define MAX_QDEPTH 10
-static unsigned qdepth_tally[MAX_QDEPTH] = {0};
+static unsigned qdepth_tally[MAX_QDEPTH+1] = {0};
 
 static  void select_targets (chunk_put_handle_t cp,
                              unsigned nbids,
