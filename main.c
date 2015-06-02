@@ -316,7 +316,11 @@ static void simulate (void)
     const event_t *e;
 
     unsigned delta;
+    unsigned put_seed = 0x12345678;
+
     tick_t next_object_put_event = rand()%(2*derived.ticks_per_object);
+
+    next_object_put_event = rand_r(&put_seed) % (2*derived.ticks_per_object);
     
     printf("Total Chunks %d\n",derived.n_tracked_puts);
     e = (const event_t *)ehead.tllist.next;
@@ -328,7 +332,7 @@ static void simulate (void)
         if (next_object_put_event < e->tllist.time) {
             insert_next_put(next_object_put_event);
             e = (const event_t *)ehead.tllist.next;
-            delta = rand()%(2*derived.ticks_per_object) + 1;
+            delta = rand_r(&put_seed)%(2*derived.ticks_per_object) + 1;
             next_object_put_event += delta;
         }
         assert(e->sig == 0x1234);

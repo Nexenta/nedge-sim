@@ -69,7 +69,7 @@ static void make_bid (unsigned target_num,
         (inbound_reservation_t *)tllist_find ((tllist_t *)&tp->ir_head,*start);
     tllist_insert ((tllist_t *)insert_after,(tllist_t *)ir);
     assert(qdepth);
-    *qdepth = ++tp->ir_queue_depth;
+    *qdepth = tp->ir_queue_depth++;
     ++total_reservations;
 }
 

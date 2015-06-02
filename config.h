@@ -50,7 +50,7 @@ extern sim_config_t config;
 #define CHUNK_SIZE (1024*1024)
 #define CHUNKS_PER_OBJECT 10
 #define TRACKED_OBJECT_PUTS 10000
-#define CLUSTER_UTILIZATION 50
+#define CLUSTER_UTILIZATION 55
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.

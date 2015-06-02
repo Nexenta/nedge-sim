@@ -228,6 +228,9 @@ static bool acceptable_bid_set (const bid_t *bids,
     return window_lim >= *lim;
 }
 
+#define MAX_QDEPTH 10
+static unsigned qdepth_tally[MAX_QDEPTH] = {0};
+
 static  void select_targets (chunk_put_handle_t cp,
                              unsigned nbids,
                              bid_t *bids,
@@ -265,6 +268,8 @@ static  void select_targets (chunk_put_handle_t cp,
                 fprintf(bid_f,",%d",accepted_target[m]);
             }
             fprintf(bid_f,",MaxQ,%d\n",max_qdepth);
+            if (max_qdepth > MAX_QDEPTH) max_qdepth = MAX_QDEPTH;
+            ++qdepth_tally[max_qdepth];
             return;
         }
     }
@@ -389,38 +394,41 @@ bool handle_chunk_put_ack (const event_t *e)
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
     if ((was_tracked = cp->count <= derived.n_tracked_puts) != 0) {
-        fprintf(log_f,"Completion,%d,duration,%ld\n",cp->count,duration);
+        fprintf(log_f,"Completion,%d,duration msec,%0.3f\n",cp->count,
+                ((float)duration)/(10*1024*1024));
         if (duration < min_duration) min_duration = duration;
         if (duration > max_duration) max_duration = duration;
         total_duration += duration;
         ++n_completions;
 
-	if (l100_idx < DURATION_SAMPLE_SIZE) {
-		last100_durations[l100_idx] = duration;
-	}
-	l100_idx++;
-	if (l100_idx == DURATION_SAMPLE_SIZE) {
-		int sample_average = 0;
-		float sample_stdev = 0;
-		int i;
-		for (i = 0; i < DURATION_SAMPLE_SIZE; i++) {
-			sample_average += last100_durations[i];
-		}
-		sample_average /= DURATION_SAMPLE_SIZE;
-		running_avg_duration = (4 * running_avg_duration + 6 * sample_average) / 10;
+        if (l100_idx < DURATION_SAMPLE_SIZE) {
+            last100_durations[l100_idx] = duration;
+        }
+        l100_idx++;
+        if (l100_idx == DURATION_SAMPLE_SIZE) {
+            int sample_average = 0;
+            float sample_stdev = 0;
+            int i;
+            for (i = 0; i < DURATION_SAMPLE_SIZE; i++) {
+                sample_average += last100_durations[i];
+            }
+            sample_average /= DURATION_SAMPLE_SIZE;
+            running_avg_duration =
+                (4 * running_avg_duration + 6 * sample_average) / 10;
 
-		for (i = 0; i < DURATION_SAMPLE_SIZE; i++) {
-			sample_stdev += (last100_durations[i] - sample_average) * (last100_durations[i] - sample_average);
-		}
-		sample_stdev /= (DURATION_SAMPLE_SIZE - 1);
-		sample_stdev = sqrtf(sample_stdev);
+            for (i = 0; i < DURATION_SAMPLE_SIZE; i++) {
+                sample_stdev +=
+                    (last100_durations[i] - sample_average) *
+                    (last100_durations[i] - sample_average);
+            }
+            sample_stdev /= (DURATION_SAMPLE_SIZE - 1);
+            sample_stdev = sqrtf(sample_stdev);
 
-		running_avg_stdev = (4 * running_avg_stdev + 6 * sample_stdev) / 10;
+            running_avg_stdev = (4 * running_avg_stdev + 6 * sample_stdev) / 10;
 
-		memset(last100_durations, 0, DURATION_SAMPLE_SIZE * sizeof(tick_t));
-		l100_idx = 0;
-	}
-
+            memset(last100_durations, 0, DURATION_SAMPLE_SIZE * sizeof(tick_t));
+            l100_idx = 0;
+        }
     }
     cp->sig = 0xDEAD;
     free(cp);
@@ -434,18 +442,23 @@ void report_duration_stats (void)
 {
     float avg_x,max_x;
     tick_t avg;
+    unsigned n;
     
     printf("\n\n# completions %ld\n",n_completions);
     if (n_completions) {
         avg = divup(total_duration,n_completions);
         avg_x = ((float)avg)/min_duration;
         max_x = ((float)max_duration)/min_duration;
-        printf("min %ld average %ld (x%f) max %ld (x%f)\n",
-               min_duration,avg,avg_x,max_duration,max_x);
+        printf("min msecs %0.3f average %0.3f (x%f) max %0.3f (x%f)\n",
+               ((float)min_duration)/(10*1024*1024),
+               ((float)avg)/(10*1024*1024),avg_x,
+               ((float)max_duration)/(10*1024*10240),max_x);
         printf("running-average-duration %ld\n", running_avg_duration);
         printf("running-average-stdev %f\n", running_avg_stdev);
     }
-
+    printf("Queue depth distribution:\n");
+    for (n=0;n < MAX_QDEPTH+1;++n)
+        printf("([%d]:%d\n",n,qdepth_tally[n]);
 }
 
 unsigned chunk_seq (chunk_put_handle_t cp)
