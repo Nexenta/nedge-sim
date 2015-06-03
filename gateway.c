@@ -230,8 +230,20 @@ static bool acceptable_bid_set (const bid_t *bids,
     return window_lim >= *lim;
 }
 
+
 #define MAX_QDEPTH 10
-static unsigned qdepth_tally[MAX_QDEPTH+1] = {0};
+#define MAX_WRITE_QDEPTH 64
+typedef struct trackers {
+    tick_t min_duration;
+    tick_t max_duration;
+    tick_t total_duration;
+    unsigned long n_completions;
+    unsigned qdepth_tally[MAX_QDEPTH+1];
+    unsigned write_qdepth_tally [MAX_WRITE_QDEPTH+1];
+    unsigned mbz;
+} trackers_t;
+
+static trackers_t track = {0};
 
 static  void select_targets (chunk_put_handle_t cp,
                              unsigned nbids,
@@ -271,7 +283,7 @@ static  void select_targets (chunk_put_handle_t cp,
             }
             fprintf(bid_f,",MaxQ,%d\n",max_qdepth);
             if (max_qdepth > MAX_QDEPTH) max_qdepth = MAX_QDEPTH;
-            ++qdepth_tally[max_qdepth];
+            ++track.qdepth_tally[max_qdepth];
             return;
         }
     }
@@ -372,21 +384,13 @@ void handle_replica_put_ack (const event_t *e)
     }
 }
 
-
-static tick_t min_duration = (tick_t)~0;
-static tick_t max_duration = 0;
-static tick_t total_duration = 0;
-static unsigned long n_completions = 0;
-static unsigned this_mbz = 0;
-
 #define DURATION_SAMPLE_SIZE 100
 static tick_t last100_durations[DURATION_SAMPLE_SIZE];
 static int    l100_idx = 0;
 static tick_t running_avg_duration = 0;
 static float  running_avg_stdev = 0;
 
-#define MAX_WRITE_QDEPTH 32
-static unsigned write_qdepth_tally[MAX_WRITE_QDEPTH+1] = {0};
+
 
 bool handle_chunk_put_ack (const event_t *e)
 {
@@ -404,10 +408,10 @@ bool handle_chunk_put_ack (const event_t *e)
     if ((was_tracked = cp->count <= derived.n_tracked_puts) != 0) {
         fprintf(log_f,"Completion,%d,duration msec,%0.3f\n",cp->count,
                 ((float)duration)/(10*1024*1024));
-        if (duration < min_duration) min_duration = duration;
-        if (duration > max_duration) max_duration = duration;
-        total_duration += duration;
-        ++n_completions;
+        if (duration < track.min_duration) track.min_duration = duration;
+        if (duration > track.max_duration) track.max_duration = duration;
+        track.total_duration += duration;
+        ++track.n_completions;
 
         if (l100_idx < DURATION_SAMPLE_SIZE) {
             last100_durations[l100_idx] = duration;
@@ -440,43 +444,45 @@ bool handle_chunk_put_ack (const event_t *e)
     }
     if (cp->write_qdepth > MAX_WRITE_QDEPTH)
         cp->write_qdepth = MAX_WRITE_QDEPTH;
-    ++write_qdepth_tally[cp->write_qdepth];
+    ++track.write_qdepth_tally[cp->write_qdepth];
     cp->sig = 0xDEAD;
     free(cp);
     --n_chunkputs;
 
-    assert(!this_mbz);
+    assert(!track.mbz);
     return was_tracked;
 }
 
 void report_duration_stats (void)
+
+// report and clear the accumulated duratin and qdepth stats
+
 {
-    float avg_x,max_x;
-    tick_t avg;
+    float avg,avg_x,max_x;
     unsigned n;
     
-    printf("\n\n# completions %ld\n",n_completions);
-    if (n_completions) {
-        avg = divup(total_duration,n_completions);
-        avg_x = ((float)avg)/min_duration;
-        max_x = ((float)max_duration)/min_duration;
+    printf("\n\n# completions %ld\n",track.n_completions);
+    if (track.n_completions) {
+        avg = ((float)track.total_duration)/track.n_completions;
+        avg_x = avg/track.min_duration;
+        max_x = ((float)track.max_duration)/track.min_duration;
         printf("min msecs %0.3f average %0.3f (x%f) max %0.3f (x%f)\n",
-               ((float)min_duration)/(10*1024*1024),
-               ((float)avg)/(10*1024*1024),avg_x,
-               ((float)max_duration)/(10*1024*10240),max_x);
+               ((float)track.min_duration)/(10*1024*1024),
+               avg/(10*1024*1024),avg_x,
+               ((float)track.max_duration)/(10*1024*10240),max_x);
         printf("running-average-duration %ld\n", running_avg_duration);
         printf("running-average-stdev %f\n", running_avg_stdev);
     }
     if (replicast) {
         printf("\nInbound Queue depth distribution:\n");
         for (n=0;n < MAX_QDEPTH+1;++n)
-            printf("([%d]:%d\n",n,qdepth_tally[n]);
-        memset(qdepth_tally,0,sizeof qdepth_tally);
+            printf("([%d]:%d\n",n,track.qdepth_tally[n]);
     }
     printf("\nWrite Queue Depth distribution:\n");
     for (n=0;n < MAX_WRITE_QDEPTH;++n)
-        printf("[%d]:%d\n",n,write_qdepth_tally[n]);
-    memset(write_qdepth_tally,0,sizeof write_qdepth_tally);
+        printf("[%d]:%d\n",n,track.write_qdepth_tally[n]);
+    memset(&track,0,sizeof(trackers_t));
+    track.min_duration = ~0L;
 }
 
 unsigned chunk_seq (chunk_put_handle_t cp)
