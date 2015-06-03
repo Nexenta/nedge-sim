@@ -69,8 +69,10 @@ static void move_first_event_back_to_pending_list (nonrep_target_t *t)
 {
     tcp_reception_complete_t *pend;
     
+    assert(t);
     pend = t->pending;
-    tllist_remove(&pend->event.tllist); // TODO: do not free
+    assert(pend);
+    tllist_remove(&pend->event.tllist);
     tllist_insert(&t->pend_completions.event.tllist,&pend->event.tllist);
     
     t->pending = (tcp_reception_complete_t *)0;;
@@ -81,8 +83,8 @@ static void move_first_pending_completion_to_event_list (nonrep_target_t *t)
     tcp_reception_complete_t *pend;
     
     pend = (tcp_reception_complete_t *)t->pend_completions.event.tllist.next;
-    tllist_remove(&pend->event.tllist); // TODO: do not free
-    // insert_event(pend);
+    tllist_remove(&pend->event.tllist);
+    __insert_event(&pend->event);
 
     t->pending = pend;
 }

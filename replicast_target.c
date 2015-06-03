@@ -60,6 +60,14 @@ static void make_bid (unsigned target_num,
 // target and in *start and *lim
 //
 // duration should already be padded to allow the Gateway to match varying bids
+//
+// TODO: also calculate a "jit_start" which is the earliest time when the
+// rendezvous transfer would be able to proceed directly to disk. That is,
+// this is the latest rendezvous transfer time that will still return the
+// earlie chunk ack at least from this Target.
+//
+// the gateway will adjust the window based on the jit_start and/or break
+// ties in favor of earlier jit_starts.
 
 {
     inbound_reservation_t *ir =
@@ -196,6 +204,7 @@ static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
     assert(found_ir == ir);
     
     tllist_remove((tllist_t *)ir);
+    free(ir);
 
     --tp->ir_queue_depth;
     --total_reservations;

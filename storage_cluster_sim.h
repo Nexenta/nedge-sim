@@ -253,7 +253,13 @@ typedef struct chunk_put_ack {
 //
 #define insert_event(e) (_insert_event(&e.event,sizeof e))
 extern void _insert_event (const event_t *new_event,size_t event_size);
-extern void tllist_remove (tllist_t *t);
+    // allocate an event (event_size bytes) and copy 'new_event' to it
+    // before invoking __insert_event()
+
+extern void __insert_event (event_t *n); // insert already allocated event
+                                         // into the event list (&ehead)
+extern void tllist_remove (tllist_t *t); // remove 't' from tllist
+                                         // 't' must still be eventually free()d
 extern const tllist_t *tllist_find (
                                     const tllist_t *head,
                                     tick_t find);

@@ -85,7 +85,6 @@ void tllist_remove (tllist_t *t)
     tllist_node_verify(t);
     t->prev->next = t->next;
     t->next->prev = t->prev;
-    free(t);
 }
 
 static unsigned event_depth_by_type[NUM_EVENT_TYPES];
@@ -96,6 +95,7 @@ static void event_remove (event_t *e)
     assert(&e->tllist == ehead.tllist.next);
     --event_depth_by_type[e->type];
     tllist_remove(&e->tllist);
+    free(e);
     assert(edepth);
     --edepth;
 }
@@ -131,6 +131,21 @@ void tllist_insert (tllist_t *ref,tllist_t *n)
     tllist_node_verify(n);
 }
 
+void __insert_event (event_t *n)
+{
+    tllist_t *after;
+    
+    assert(n);
+    n->sig = 0x1234;
+    after = (tllist_t *)tllist_find((tllist_t *)&ehead,n->tllist.time);
+    tllist_insert (after,(tllist_t*)n);
+    tllist_node_verify(after);
+    tllist_node_verify((tllist_t *)n);
+    tllist_verify((tllist_t *)&ehead);
+    ++event_depth_by_type[n->type];
+    ++edepth;
+}
+
 void _insert_event (const event_t *new_event,size_t event_size)
 //
 // calloc a copy of new_event with sub-type specific size
@@ -138,18 +153,10 @@ void _insert_event (const event_t *new_event,size_t event_size)
 //
 {
     event_t *n = (event_t *)calloc(1,event_size);
-    tllist_t *after;
     
     assert (n);
     memcpy(n,new_event,event_size);
-    n->sig = 0x1234;
-    after = (tllist_t *)tllist_find((tllist_t *)&ehead,n->tllist.time);
-    tllist_insert (after,(tllist_t*)n);
-    tllist_node_verify(after);
-    tllist_node_verify((tllist_t *)n);
-    tllist_verify((tllist_t *)&ehead);
-    ++event_depth_by_type[new_event->type];
-    ++edepth;
+    __insert_event(n);
 }
 
 static void log_event (const event_t *e)
@@ -412,7 +419,7 @@ int main(int argc, const char * argv[]) {
     
     // TODO: accept command line customization of config
     derive_config();
-    bool nr_enabled = false;
+    bool nr_enabled = true;
     log_f = open_outf("log");
     bid_f = open_outf("bid");
 
