@@ -9,6 +9,7 @@
 #include "storage_cluster_sim.h"
 
 typedef struct nonrep_target_t {
+    target_t    common;
     unsigned concurrent_tcp_receives;
     tick_t last_disk_write_completion;
     unsigned mbz;

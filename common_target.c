@@ -16,16 +16,24 @@ void handle_disk_write_completion (const event_t *e)
 // merge after Replicast vs. Non-Replicast handling on the target
 //
 {
-    disk_write_completion_t *wc = (disk_write_completion_t *)e;
+    disk_write_completion_t *dwc = (disk_write_completion_t *)e;
     replica_put_ack_t new_event;
     assert(e);
+
+    
     new_event.event.create_time = e->tllist.time;
     new_event.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
     new_event.event.type = REPLICA_PUT_ACK;
-    new_event.cp = wc->cp;
-    assert(chunk_seq(wc->cp));
-    new_event.target_num = wc->target_num;
-    assert(wc->target_num < derived.n_targets);
+    new_event.cp = dwc->cp;
+    assert(dwc->qptr);
+    assert(*dwc->qptr);
+    --*dwc->qptr;
+    
+    assert(chunk_seq(dwc->cp));
+    
+    new_event.target_num = dwc->target_num;
+    new_event.write_qdepth = dwc->write_qdepth;
+    assert(dwc->target_num < derived.n_targets);
     
     insert_event (new_event);
 }

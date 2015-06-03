@@ -58,6 +58,8 @@ typedef struct chunkput {
                                     // is stored in bids[0].
     unsigned nbids;                 // # of bids collected
     unsigned replicas_unacked;  // Number of replicas not yet acked
+    unsigned write_qdepth;      // Maximum write queue depth encountered for
+                                // this chunk put
     unsigned mbz;               // must be zero
 } chunkput_t;
 
@@ -357,6 +359,9 @@ void handle_replica_put_ack (const event_t *e)
     assert(rpa->target_num < derived.n_targets);
     assert(0 < c->replicas_unacked && c->replicas_unacked <= config.n_replicas);
     
+    if (rpa->write_qdepth > c->write_qdepth)
+        c->write_qdepth = rpa->write_qdepth;
+    
     if (!--c->replicas_unacked) {
         new_event.event.create_time = e->tllist.time;
         new_event.event.tllist.time = e->tllist.time + 1;
@@ -379,6 +384,9 @@ static tick_t last100_durations[DURATION_SAMPLE_SIZE];
 static int    l100_idx = 0;
 static tick_t running_avg_duration = 0;
 static float  running_avg_stdev = 0;
+
+#define MAX_WRITE_QDEPTH 32
+static unsigned write_qdepth_tally[MAX_WRITE_QDEPTH+1] = {0};
 
 bool handle_chunk_put_ack (const event_t *e)
 {
@@ -430,6 +438,9 @@ bool handle_chunk_put_ack (const event_t *e)
             l100_idx = 0;
         }
     }
+    if (cp->write_qdepth > MAX_WRITE_QDEPTH)
+        cp->write_qdepth = MAX_WRITE_QDEPTH;
+    ++write_qdepth_tally[cp->write_qdepth];
     cp->sig = 0xDEAD;
     free(cp);
     --n_chunkputs;
@@ -456,9 +467,16 @@ void report_duration_stats (void)
         printf("running-average-duration %ld\n", running_avg_duration);
         printf("running-average-stdev %f\n", running_avg_stdev);
     }
-    printf("Queue depth distribution:\n");
-    for (n=0;n < MAX_QDEPTH+1;++n)
-        printf("([%d]:%d\n",n,qdepth_tally[n]);
+    if (replicast) {
+        printf("\nInbound Queue depth distribution:\n");
+        for (n=0;n < MAX_QDEPTH+1;++n)
+            printf("([%d]:%d\n",n,qdepth_tally[n]);
+        memset(qdepth_tally,0,sizeof qdepth_tally);
+    }
+    printf("\nWrite Queue Depth distribution:\n");
+    for (n=0;n < MAX_WRITE_QDEPTH;++n)
+        printf("[%d]:%d\n",n,write_qdepth_tally[n]);
+    memset(write_qdepth_tally,0,sizeof write_qdepth_tally);
 }
 
 unsigned chunk_seq (chunk_put_handle_t cp)

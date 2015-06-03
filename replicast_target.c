@@ -11,6 +11,7 @@
 static unsigned total_reservations = 0;
 
 typedef struct rep_target_t {
+    target_t    common;
     inbound_reservation_t ir_head;
     unsigned ir_queue_depth;
     tick_t last_disk_write_completion;
@@ -274,6 +275,8 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     dwc.event.type = DISK_WRITE_COMPLETION;
     dwc.cp = rtr->cp;
     dwc.target_num = rtr->target_num;
+    dwc.write_qdepth = tp->common.write_qdepth++;
+    dwc.qptr = &tp->common.write_qdepth;
     insert_event(dwc);
 }
 
