@@ -12,6 +12,8 @@ typedef struct nonrep_target_t {
     target_t    common;
     unsigned n_pend_completions;
     tcp_reception_complete_t pend_completions;
+    tcp_reception_complete_t *pending;  // conceptual head of pend_completions
+                                        // but currently in the event list
     tick_t last_disk_write_completion;
     tick_t prior_reception_time;
     unsigned mbz;
@@ -61,38 +63,56 @@ static void credit_ongoing_receptions (nonrep_target_t *t,tick_t time_now)
         
         trc->credit += credit;
     }
+}
+
+static void move_first_event_back_to_pending_list (nonrep_target_t *t)
+{
+    tcp_reception_complete_t *pend;
     
+    pend = t->pending;
+    tllist_remove(&pend->event.tllist); // TODO: do not free
+    tllist_insert(&t->pend_completions.event.tllist,&pend->event.tllist);
     
+    t->pending = (tcp_reception_complete_t *)0;;
+}
+
+static void move_first_pending_completion_to_event_list (nonrep_target_t *t)
+{
+    tcp_reception_complete_t *pend;
+    
+    pend = (tcp_reception_complete_t *)t->pend_completions.event.tllist.next;
+    tllist_remove(&pend->event.tllist); // TODO: do not free
+    // insert_event(pend);
+
+    t->pending = pend;
 }
 
 void handle_tcp_xmit_received (const event_t *e)
 
 {
-
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
-    tcp_reception_complete_t trc;
+    tcp_reception_complete_t *trc = calloc(1,sizeof *trc);
+    const tllist_t *insert_point;
     nonrep_target_t *t;
     
     assert (e);
+    assert (trc);
     t = nrt + txr->target_num;
     ++t->n_pend_completions;
-    trc.event.create_time = e->tllist.time;
-    trc.event.tllist.time =
+    trc->event.create_time = e->tllist.time;
+    trc->event.tllist.time =
         e->tllist.time + derived.chunk_xmit_duration * t->n_pend_completions;
         // TODO: TCP overhead is slightly more per KB
-    
+ 
+    move_first_event_back_to_pending_list(t);
     credit_ongoing_receptions(t,e->tllist.time);
+    move_first_pending_completion_to_event_list (t);
 
-    trc.event.type = TCP_RECEPTION_COMPLETE;
-    trc.cp = txr->cp;
-    trc.target_num = txr->target_num;
-    (void)trc;
-    // insert trc in t->pend_completions
-    //
-    // if lead event changed then remove it from event list and re-insert
-    // at its new time (but do not free anything
-    //
-    assert(false);  // TODO: fixme
+    trc->event.type = TCP_RECEPTION_COMPLETE;
+    trc->cp = txr->cp;
+    trc->target_num = txr->target_num;
+    insert_point = tllist_find(&t->pend_completions.event.tllist,trc->event.tllist.time);
+    tllist_insert((tllist_t *)insert_point,&trc->event.tllist);
 }
 
 void handle_tcp_reception_complete (const event_t *e)
@@ -106,7 +126,6 @@ void handle_tcp_reception_complete (const event_t *e)
     t = nrt + trc->target_num;
     
     credit_ongoing_receptions(t,e->tllist.time);
-    
 
     dwc.event.create_time = e->tllist.time;
     
@@ -121,9 +140,6 @@ void handle_tcp_reception_complete (const event_t *e)
     dwc.target_num = trc->target_num;
     dwc.write_qdepth = t->common.write_qdepth++;
     dwc.qptr = &t->common.write_qdepth;
-    //  remove head of target's pend receptions
-    //  insert it as an event
+    move_first_pending_completion_to_event_list (t);
     insert_event(dwc);
-    
-    assert(false);  // TODO: fixme
 }
