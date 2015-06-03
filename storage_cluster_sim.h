@@ -186,9 +186,10 @@ typedef struct tcp_xmit_received {
 //
 
 typedef struct tcp_reception_complete {
-    event_t event;          // tcp_reception_complete is an event
-    chunk_put_handle_t  cp; // Handle of the chunk put
-    unsigned target_num;    // Target where this reception completed
+    event_t     event;          // tcp_reception_complete is an event
+    chunk_put_handle_t  cp;     // Handle of the chunk put
+    unsigned    target_num;     // Target where this reception completed
+    tick_t      credit;         // already received data
 } tcp_reception_complete_t;
 //
 // This event models completion of one TCP transmission (of 'cp') to a

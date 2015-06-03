@@ -423,8 +423,6 @@ int main(int argc, const char * argv[]) {
     simulate();
     release_rep_targets();
     if (nr_enabled) {
-    // TODO: switch log files?
-    // TODO: reset various tallies
         fprintf(log_f,"Simulating Non-replicast\n");
         fprintf(bid_f,"Simulating Non-replicast\n");
         replicast = false;
