@@ -86,6 +86,7 @@ void handle_tcp_xmit_received (const event_t *e)
     trc.event.type = TCP_RECEPTION_COMPLETE;
     trc.cp = txr->cp;
     trc.target_num = txr->target_num;
+    (void)trc;
     // insert trc in t->pend_completions
     //
     // if lead event changed then remove it from event list and re-insert
