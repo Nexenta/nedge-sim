@@ -165,90 +165,104 @@ static void log_event (const event_t *e)
 
 {
     unsigned i;
-    const object_put_ready_t *opr;
-    const rep_chunk_put_ready_t   *cpr;
-    const rep_chunk_put_request_received_t *cpreq;
-    const rep_chunk_put_response_received_t *cpresp;
-    const rep_chunk_put_accept_t *cpa;
-    const rep_rendezvous_xfer_received_t *rtr;
-    const tcp_xmit_received_t *txr;
-    const tcp_reception_complete_t *trc;
-    const disk_write_completion_t *dwc;
-    const replica_put_ack_t *rpack;
-    const chunk_put_ack_t *cpack;
+    union {
+        const object_put_ready_t *opr;
+        const rep_chunk_put_ready_t   *cpr;
+        const rep_chunk_put_request_received_t *cpreq;
+        const rep_chunk_put_response_received_t *cpresp;
+        const rep_chunk_put_accept_t *cpa;
+        const rep_rendezvous_xfer_received_t *rtr;
+        const tcp_xmit_received_t *txr;
+        const tcp_reception_complete_t *trc;
+        const tcp_reception_ack_t *tra;
+        const disk_write_completion_t *dwc;
+        const replica_put_ack_t *rpack;
+        const chunk_put_ack_t *cpack;
+    } u;
     
     switch (e->type) {
         case OBJECT_PUT_READY:
-            opr = (const object_put_ready_t *)e;
+            u.opr = (const object_put_ready_t *)e;
             fprintf(log_f,"%ld,%ld,OBJECT_PUT_READY,%d\n",
-                    e->tllist.time,e->create_time,opr->n_chunks);
+                    e->tllist.time,e->create_time,u.opr->n_chunks);
             break;
         case REP_CHUNK_PUT_READY:
-            cpr = (const rep_chunk_put_ready_t *)e;
+            u.cpr = (const rep_chunk_put_ready_t *)e;
             fprintf(log_f,"%ld,%ld,CHUNK_PUT_READY,0x%lx,%d\n",
-                    e->tllist.time,e->create_time,cpr->cp,chunk_seq(cpr->cp));
+                    e->tllist.time,e->create_time,
+                    u.cpr->cp,chunk_seq(u.cpr->cp));
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
-            cpreq = (const rep_chunk_put_request_received_t *)e;
+            u.cpreq = (const rep_chunk_put_request_received_t *)e;
             fprintf(log_f,"%ld,%ld,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,cpreq->cp,
-                    chunk_seq(cpreq->cp),cpreq->target_num);
+                    e->tllist.time,e->create_time,u.cpreq->cp,
+                    chunk_seq(u.cpreq->cp),u.cpreq->target_num);
             break;
         case REP_CHUNK_PUT_RESPONSE_RECEIVED:
-            cpresp = (const rep_chunk_put_response_received_t *)e;
+            u.cpresp = (const rep_chunk_put_response_received_t *)e;
             fprintf(log_f,
                     "%ld,%ld,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,%ld,%ld\n",
-                    e->tllist.time,e->create_time,cpresp->cp,
-                    chunk_seq(cpresp->cp),cpresp->target_num,
-                    cpresp->bid_start,cpresp->bid_lim);
+                    e->tllist.time,e->create_time,u.cpresp->cp,
+                    chunk_seq(u.cpresp->cp),u.cpresp->target_num,
+                    u.cpresp->bid_start,u.cpresp->bid_lim);
             break;
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
-            cpa = (const rep_chunk_put_accept_t *)e;
+            u.cpa = (const rep_chunk_put_accept_t *)e;
 
             fprintf(log_f,
                     "%ld,%ld,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,%d,%ld,%ld",
-                    e->tllist.time,e->create_time,cpa->cp,chunk_seq(cpa->cp),
-                    cpa->target_num,
-                    cpa->window_start,cpa->window_lim);
+                    e->tllist.time,e->create_time,
+                    u.cpa->cp,chunk_seq(u.cpa->cp),
+                    u.cpa->target_num,
+                    u.cpa->window_start,u.cpa->window_lim);
             
             for (i=0;i != N_REPLICAS;++i)
-                fprintf (log_f,",%d",cpa->accepted_target[i]);
+                fprintf (log_f,",%d",u.cpa->accepted_target[i]);
             fprintf(log_f,"\n");
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
-            rtr = (const rep_rendezvous_xfer_received_t *)e;
+            u.rtr = (const rep_rendezvous_xfer_received_t *)e;
             fprintf(log_f,"%ld,%ld,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,rtr->cp,chunk_seq(rtr->cp),
-                    rtr->target_num);
+                    e->tllist.time,e->create_time,u.rtr->cp,chunk_seq(u.rtr->cp),
+                    u.rtr->target_num);
             break;
         case TCP_XMIT_RECEIVED:
-            txr = (const tcp_xmit_received_t *)e;
+            u.txr = (const tcp_xmit_received_t *)e;
             fprintf(log_f,"%ld,%ld,TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
-                    txr->target_num);
+                    e->tllist.time,e->create_time,
+                    u.txr->cp,chunk_seq(u.txr->cp),
+                    u.txr->target_num);
             break;
         case TCP_RECEPTION_COMPLETE:
-            trc = (const tcp_reception_complete_t *)e;
+            u.trc = (const tcp_reception_complete_t *)e;
             fprintf(log_f,"%ld,%ld,TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,trc->cp,chunk_seq(trc->cp),
-                    trc->target_num);
+                    e->tllist.time,e->create_time,
+                    u.trc->cp,chunk_seq(u.trc->cp),
+                    u.trc->target_num);
+            break;
+        case TCP_RECEPTION_ACK:
+            u.tra = (const tcp_reception_ack_t *)e;
+            fprintf(log_f,"%ld,%ld,TCP_RECEPTION_ACK,0x%lx,%d,%d\n",
+                    e->tllist.time,e->create_time,
+                    u.tra->cp,chunk_seq(u.tra->cp),u.tra->target_num);
             break;
         case DISK_WRITE_COMPLETION:
-            dwc = (const disk_write_completion_t *)e;
+            u.dwc = (const disk_write_completion_t *)e;
             fprintf(log_f,"%ld,%ld,DISK_WRITE_COMPLETION,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,dwc->cp,chunk_seq(dwc->cp),
-                    dwc->target_num);
+                    e->tllist.time,e->create_time,
+                    u.dwc->cp,chunk_seq(u.dwc->cp),
+                    u.dwc->target_num);
             break;
         case REPLICA_PUT_ACK:
-            rpack = (const replica_put_ack_t *)e;
+            u.rpack = (const replica_put_ack_t *)e;
             fprintf(log_f,"%ld,%ld,REPLICA_PUT_ACK,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,rpack->cp,
-                    chunk_seq(rpack->cp),rpack->target_num);
+                    e->tllist.time,e->create_time,u.rpack->cp,
+                    chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
-            cpack = (const chunk_put_ack_t *)e;
+            u.cpack = (const chunk_put_ack_t *)e;
             fprintf(log_f,"%ld,%ld,CHUNK_PUT_ACK,0x%lx\n",
-                    e->tllist.time,e->create_time,cpack->cp);
+                    e->tllist.time,e->create_time,u.cpack->cp);
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -301,6 +315,9 @@ static void process_event (const event_t *e)
         case TCP_RECEPTION_COMPLETE:
             handle_tcp_reception_complete(e);
             break;
+        case TCP_RECEPTION_ACK:
+            handle_tcp_reception_ack(e);
+            break;
         case DISK_WRITE_COMPLETION:
             handle_disk_write_completion(e);
             break;
@@ -318,14 +335,20 @@ static void process_event (const event_t *e)
     }
 }
 
-static void simulate (void)
+bool replicast; // simulation is currently in replicast mode
+
+static void simulate (bool do_replicast)
 {
     const event_t *e;
 
     unsigned delta;
     unsigned put_seed = 0x12345678;
+    
+    replicast = do_replicast;
+    
+    assert(!edepth);
 
-    tick_t next_object_put_event = rand()%(2*derived.ticks_per_object);
+    tick_t next_object_put_event;
 
     next_object_put_event = rand_r(&put_seed) % (2*derived.ticks_per_object);
     
@@ -409,8 +432,6 @@ static FILE *open_outf (const char *type)
 // #REPLICAST defined for one executable and once without
 //
 
-bool replicast; // simulation is currently in replicast mode
-
 FILE *log_f;
 FILE *bid_f;
 
@@ -419,24 +440,22 @@ int main(int argc, const char * argv[]) {
     
     // TODO: accept command line customization of config
     derive_config();
-    bool nr_enabled = true;
     log_f = open_outf("log");
     bid_f = open_outf("bid");
 
     fprintf(log_f,"Simulating Replicast\n");
     fprintf(bid_f,"Simulating Replicast\n");
-    replicast = true;
+
     init_rep_targets(derived.n_targets);
-    simulate();
+    simulate(true);
     release_rep_targets();
-    if (nr_enabled) {
-        fprintf(log_f,"Simulating Non-replicast\n");
-        fprintf(bid_f,"Simulating Non-replicast\n");
-        replicast = false;
-        init_nonrep_targets(derived.n_targets);
-        simulate();
-        release_nonrep_targets();
-    }
+
+    fprintf(log_f,"Simulating Non-replicast\n");
+    fprintf(bid_f,"Simulating Non-replicast\n");
+    init_nonrep_targets(derived.n_targets);
+    simulate(false);
+    release_nonrep_targets();
+
     fclose(log_f);
     fclose(bid_f);
     exit(0);

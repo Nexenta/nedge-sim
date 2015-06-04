@@ -49,6 +49,7 @@ typedef enum event_type {
     REP_RENDEZVOUS_XFER_RECEIVED,
     TCP_XMIT_RECEIVED,
     TCP_RECEPTION_COMPLETE,
+    TCP_RECEPTION_ACK,
     DISK_WRITE_COMPLETION,
     REPLICA_PUT_ACK,
     CHUNK_PUT_ACK,
@@ -202,6 +203,12 @@ typedef struct tcp_reception_complete {
 // The disk write is also scheduled at this step, as descried for replicast.
 //
 
+typedef struct tcp_reception_ack {
+    event_t event;          // tpc_reception_ack is an event
+    chunk_put_handle_t  cp; // handle ofthe chunk put
+    unsigned target_num;    // ack is from this target
+} tcp_reception_ack_t;
+
 typedef struct disk_write_completion {
     event_t event;          // disk_write_completion is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
@@ -287,6 +294,7 @@ typedef struct target { // common fields for replicast and non-replicast target
 void handle_object_put_ready (const event_t *e);
 extern void handle_chunk_put_ready (const event_t *e);
 extern void handle_rep_chunk_put_response_received (const event_t *e);
+extern void handle_tcp_reception_ack (const event_t *e);
 extern void handle_replica_put_ack (const event_t *e);
 extern bool handle_chunk_put_ack (const event_t *e);
 extern void report_duration_stats (void);

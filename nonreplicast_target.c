@@ -32,8 +32,16 @@ void init_nonrep_targets(unsigned n_targets)
 // entry in the target_t array 't' must be set to empty.
 // Setting the ir_head to point to itself makes an empty list.
 //
-{ 
+{
+    unsigned n;
     nrt = (nonrep_target_t *)calloc(n_targets,sizeof(nonrep_target_t));
+    
+    for (n = 0;n != n_targets;++n) {
+        nrt[n].pend_completions.event.tllist.next =
+            &nrt[n].pend_completions.event.tllist;
+        nrt[n].pend_completions.event.tllist.prev =
+            &nrt[n].pend_completions.event.tllist;
+    }
     assert(nrt);
 }
 
@@ -94,27 +102,38 @@ void handle_tcp_xmit_received (const event_t *e)
 {
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
     tcp_reception_complete_t *trc = calloc(1,sizeof *trc);
+    tcp_reception_ack_t tra;
     const tllist_t *insert_point;
     nonrep_target_t *t;
     
     assert (e);
     assert (trc);
     t = nrt + txr->target_num;
-    ++t->n_pend_completions;
+
     trc->event.create_time = e->tllist.time;
     trc->event.tllist.time =
         e->tllist.time + derived.chunk_xmit_duration * t->n_pend_completions;
         // TODO: TCP overhead is slightly more per KB
  
-    move_first_event_back_to_pending_list(t);
-    credit_ongoing_receptions(t,e->tllist.time);
-    move_first_pending_completion_to_event_list (t);
-
+    if (t->pending)
+        move_first_event_back_to_pending_list(t);
+    if (t->n_pend_completions) {
+        credit_ongoing_receptions(t,e->tllist.time);
+        move_first_pending_completion_to_event_list (t);
+    }
     trc->event.type = TCP_RECEPTION_COMPLETE;
     trc->cp = txr->cp;
     trc->target_num = txr->target_num;
     insert_point = tllist_find(&t->pend_completions.event.tllist,trc->event.tllist.time);
     tllist_insert((tllist_t *)insert_point,&trc->event.tllist);
+    ++t->n_pend_completions;
+    
+    tra.event.create_time = e->tllist.time;
+    tra.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
+    tra.event.type = TCP_RECEPTION_ACK;
+    tra.cp = txr->cp;
+    tra.target_num = txr->target_num;
+    insert_event(tra);
 }
 
 void handle_tcp_reception_complete (const event_t *e)

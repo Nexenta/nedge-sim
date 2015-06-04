@@ -44,26 +44,79 @@ typedef struct bid {
 
 #define MAX_TARGETS_PER_NG 20
 
+typedef struct chunkput_replicast {
+    unsigned ng;     // Chunk has been assigned to this NG
+    bid_t    bids[MAX_TARGETS_PER_NG];
+        // collected bid response
+        // once rendezvous transfer is scheduled it is stored in bids[0].
+    unsigned nbids; // # of bids collected
+    unsigned responses_uncollected; // Chunk Put responses still to be collected
+} chunkput_replicast_t;
+
+typedef struct chunkput_nonreplicast {
+    unsigned ch_targets[MAX_REPLICAS]; // selected targets
+    unsigned repnum;                    // # of replicas previously generated.
+} chunkput_nonreplicast_t;
+
 typedef struct chunkput {
     unsigned sig;               // must be 0xABCD
     unsigned count;             // sequence # (starting at 1) for all chunks
                                 // put as part of this simulation
-    unsigned ng;                // Chunk was assigned to this Negotiating Group
     unsigned remaining_chunks;  // # of chunkputs after this one for same object
     tick_t   started;           // When processing of this chunk started
     tick_t   done;              // When processing of this chunk completed
-    unsigned responses_uncollected; // Chunk Put responses still to be collected
-    bid_t    bids[MAX_TARGETS_PER_NG];    // collected bid response
-                                    // once rendezvous transfer is scheduled it
-                                    // is stored in bids[0].
-    unsigned nbids;                 // # of bids collected
     unsigned replicas_unacked;  // Number of replicas not yet acked
     unsigned write_qdepth;      // Maximum write queue depth encountered for
                                 // this chunk put
+    union chunkput_u {
+        chunkput_replicast_t replicast;
+        chunkput_nonreplicast_t nonrep;
+    } u;
     unsigned mbz;               // must be zero
 } chunkput_t;
 
-unsigned n_chunkputs = 0;
+static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
+{
+    tcp_xmit_received_t txr;
+    unsigned r;
+    
+    if (--cp->replicas_unacked) {
+        txr.event.create_time = time_now;
+        txr.event.tllist.time = time_now + CLUSTER_TRIP_TIME;
+        txr.event.type = TCP_XMIT_RECEIVED;
+        txr.cp = (chunk_put_handle_t)cp;
+        r = cp->u.nonrep.repnum++;
+        txr.target_num = cp->u.nonrep.ch_targets[r];
+        insert_event(txr);
+    }
+}
+
+static unsigned n_chunkputs = 0;
+
+static void select_nonrep_targets (chunkput_t *c)
+
+// select config.n_replicas different targets
+// store them in c->u.nonrep.ch_targets[0..n_repicas-1]
+//
+// for each pick select at random
+//      if previously selected try next target
+
+{
+    unsigned n,t,i;
+    
+    assert (config.n_replicas < derived.n_targets);
+    
+    for (n = 0; n != config.n_replicas;++n) {
+        t = rand() % derived.n_targets;
+        for (i = 0; i < n; ++i) {
+            while (c->u.nonrep.ch_targets[i] == t) {
+                t = (t + 1) % derived.n_targets;
+                i = 0;
+            }
+        }
+        c->u.nonrep.ch_targets[n] = t;
+    }
+}
 
 void handle_object_put_ready (const event_t *e)
 
@@ -86,26 +139,10 @@ void handle_object_put_ready (const event_t *e)
     cp->started = e->tllist.time;
     cp->remaining_chunks = opr->n_chunks - 1;
     cp->replicas_unacked = config.n_replicas;
-    cp->responses_uncollected = 0;
-    if (replicast) {
-        cpr.event.type = REP_CHUNK_PUT_READY;
-        cp->ng = rand() % config.n_negotiating_groups;
-        insert_event (cpr);
-    }
-    else {
-        // select N_REPLICAS distinct targets
-        // schedule each tcp_xmit_received on each target
-        //      serial method: each xmit begins when prior completes
-        //      daisy-chain: each begins after delay from prior
-        //          Delay is 2 frames + outbound queueing delay
-        // Note that the Chunk serialization is unchanged
-        
-        /* TODO: handle TCP/consistent-hash version
-         * When will prior transmits be complete?
-         * It is ok to transmit the next chunk at that time.
-         * It is not necessary for the Chunk Put to be acked
-         */
-    }
+    cpr.event.type = REP_CHUNK_PUT_READY;
+    if (replicast)
+        cp->u.replicast.ng = rand() % config.n_negotiating_groups;
+    insert_event (cpr);
 }
 
 static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
@@ -123,16 +160,16 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
     cp->sig = 0xABCD;
     cp->count = ++n_chunkputs;
     cp->started = cpr.event.create_time = now;
-    cp->ng = rand() % config.n_negotiating_groups;
     cp->replicas_unacked = config.n_replicas;
     cp->remaining_chunks = prior_chunk->remaining_chunks - 1;
-    cp->nbids = 0;
-    cp->responses_uncollected = 0;
+
     cpr.event.create_time = now;
     cpr.event.tllist.time = now + 1;
     cpr.event.type = REP_CHUNK_PUT_READY;
     cpr.cp = (chunk_put_handle_t)cp;
-    
+    if (replicast)
+        cp->u.replicast.ng = rand() % config.n_negotiating_groups;
+
     insert_event(cpr);
 }
 
@@ -150,19 +187,26 @@ void handle_chunk_put_ready (const event_t *e)
     new_event.event.tllist.time   = e->tllist.time + CLUSTER_TRIP_TIME;
     new_event.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
     new_event.cp = (chunk_put_handle_t)p;
-    p->responses_uncollected = config.n_targets_per_ng;
+    if (replicast) {
+        p->u.replicast.responses_uncollected = config.n_targets_per_ng;
 
-    /* for each Target in randomly selected negotiating group.
-     * the Targets are assigned round-robin to Negotiating Groups.
-     *
-     * Actual Negotiating Groups are selected based on cryptographic hash
-     * of the payload (for payload chunks) or the object name (for metadata)
-     */
-    for (new_event.target_num = p->ng = rand() % config.n_negotiating_groups;
-         new_event.target_num < derived.n_targets;
-         new_event.target_num += config.n_negotiating_groups)
-    {
-        insert_event(new_event);
+        /* for each Target in randomly selected negotiating group.
+         * the Targets are assigned round-robin to Negotiating Groups.
+         *
+         * Actual Negotiating Groups are selected based on cryptographic hash
+         * of the payload (for payload chunks) or the object name (for metadata)
+         */
+        for (new_event.target_num = p->u.replicast.ng =
+                rand() % config.n_negotiating_groups;
+             new_event.target_num < derived.n_targets;
+             new_event.target_num += config.n_negotiating_groups)
+        {
+            insert_event(new_event);
+        }
+    }
+    else {
+        select_nonrep_targets(p);
+        next_tcp_xmit(p,e->tllist.time);
     }
 }
 
@@ -315,31 +359,33 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     rep_rendezvous_xfer_received_t rendezvous_xfer_event;
     chunkput_t *p = (chunkput_t *)cpr->cp;
     
-    assert (p);
+    assert(p);
     assert(!p->mbz);
     assert(p->sig == 0xABCD);
     assert(p->count);
-    assert (0 < p->responses_uncollected);
-    assert (p->responses_uncollected <= config.n_targets_per_ng);
+    assert(0 < p->u.replicast.responses_uncollected);
+    assert(p->u.replicast.responses_uncollected <= config.n_targets_per_ng);
+    assert(replicast);
     
-    save_bid (p->bids,&p->nbids,cpr);
-    if (--p->responses_uncollected) return;
+    save_bid (p->u.replicast.bids,&p->u.replicast.nbids,cpr);
+    if (--p->u.replicast.responses_uncollected) return;
     
     accept_event.event.create_time = e->tllist.time;
     accept_event.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
     accept_event.event.type = REP_CHUNK_PUT_ACCEPT_RECEIVED;
     accept_event.cp = cpr->cp;
     
-    select_targets (cpr->cp,p->nbids,p->bids,accept_event.accepted_target);
-    accept_event.window_start = p->bids[0].start;
-    accept_event.window_lim = p->bids[0].lim;
+    select_targets (cpr->cp,p->u.replicast.nbids,p->u.replicast.bids,
+                    accept_event.accepted_target);
+    accept_event.window_start = p->u.replicast.bids[0].start;
+    accept_event.window_lim = p->u.replicast.bids[0].lim;
 
     rendezvous_xfer_event.event.create_time = accept_event.event.create_time;
     rendezvous_xfer_event.event.tllist.time = accept_event.window_lim;
     rendezvous_xfer_event.event.type = REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
     
-    for (accept_event.target_num = p->ng;
+    for (accept_event.target_num = p->u.replicast.ng;
          accept_event.target_num < derived.n_targets;
          accept_event.target_num += config.n_negotiating_groups)
     {
@@ -356,6 +402,18 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     }
     if (p->remaining_chunks)
         put_next_chunk_request(p,rendezvous_xfer_event.event.tllist.time);
+}
+
+void handle_tcp_reception_ack (const event_t *e)
+{
+    const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
+    chunkput_t *c = (chunkput_t *)tra->cp;
+    
+    if (c->replicas_unacked) {
+        next_tcp_xmit(c,e->tllist.time);
+    }
+    else if (c->remaining_chunks)
+        put_next_chunk_request (c,e->tllist.time);
 }
 
 void handle_replica_put_ack (const event_t *e)
@@ -447,7 +505,6 @@ bool handle_chunk_put_ack (const event_t *e)
     ++track.write_qdepth_tally[cp->write_qdepth];
     cp->sig = 0xDEAD;
     free(cp);
-    --n_chunkputs;
 
     assert(!track.mbz);
     return was_tracked;
