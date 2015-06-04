@@ -299,6 +299,7 @@ extern void handle_replica_put_ack (const event_t *e);
 extern bool handle_chunk_put_ack (const event_t *e);
 extern void report_duration_stats (void);
 extern unsigned chunk_seq (chunk_put_handle_t cp); // utility to fetch seq #
+extern unsigned n_chunkputs; // used to serialize chunkput trackers
 
 // Common Target event handlers - in common_target.c
 extern void handle_disk_write_completion (const event_t *e);

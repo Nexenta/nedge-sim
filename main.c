@@ -92,7 +92,9 @@ static unsigned event_depth_by_type[NUM_EVENT_TYPES];
 static void event_remove (event_t *e)
 {
     assert(e != &ehead);
-    assert(&e->tllist == ehead.tllist.next);
+    assert(edepth);
+    assert(e);
+
     --event_depth_by_type[e->type];
     tllist_remove(&e->tllist);
     free(e);
@@ -136,6 +138,7 @@ void __insert_event (event_t *n)
     tllist_t *after;
     
     assert(n);
+    assert(n->type != NULL_EVENT);
     n->sig = 0x1234;
     after = (tllist_t *)tllist_find((tllist_t *)&ehead,n->tllist.time);
     tllist_insert (after,(tllist_t*)n);
@@ -331,6 +334,7 @@ static void process_event (const event_t *e)
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
+            assert(false);
             break;
     }
 }
@@ -357,21 +361,26 @@ static void simulate (bool do_replicast)
     e = (const event_t *)ehead.tllist.next;
     
     for (n_tracked_completions = 0;
-         n_tracked_completions < derived.n_tracked_puts;)
+         n_tracked_completions < derived.n_tracked_puts;
+         e = (const event_t *)ehead.tllist.next)
     {
         tllist_verify((const tllist_t *)&ehead);
         if (next_object_put_event < e->tllist.time) {
             insert_next_put(next_object_put_event);
             e = (const event_t *)ehead.tllist.next;
+            assert (e != &ehead);
+            assert (e->type != NULL_EVENT);
+            
             delta = rand_r(&put_seed)%(2*derived.ticks_per_object) + 1;
             next_object_put_event += delta;
         }
         assert(e->sig == 0x1234);
+        assert (e != &ehead);
+        assert (e->type != NULL_EVENT);
         process_event(e);
         if (log_f) log_event(e);
         event_remove((event_t *)e);
         tllist_verify((const tllist_t *)&ehead);
-        e = (const event_t *)ehead.tllist.next;
     }
     report_duration_stats();
     while (e != (const event_t *)&ehead) {
@@ -452,6 +461,7 @@ int main(int argc, const char * argv[]) {
 
     fprintf(log_f,"Simulating Non-replicast\n");
     fprintf(bid_f,"Simulating Non-replicast\n");
+    n_chunkputs = 0;
     init_nonrep_targets(derived.n_targets);
     simulate(false);
     release_nonrep_targets();

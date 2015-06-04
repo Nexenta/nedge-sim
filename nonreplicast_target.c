@@ -60,8 +60,7 @@ static void credit_ongoing_receptions (nonrep_target_t *t,tick_t time_now)
     assert (t);
     elapsed_time = time_now - t->prior_reception_time;
     t->prior_reception_time = time_now;
-    credit = elapsed_time/t->n_pend_completions;
-    
+    credit = elapsed_time/(t->n_pend_completions+1);
     
     for (pnd = t->pend_completions.event.tllist.next;
          pnd != &t->pend_completions.event.tllist;
@@ -89,12 +88,16 @@ static void move_first_event_back_to_pending_list (nonrep_target_t *t)
 static void move_first_pending_completion_to_event_list (nonrep_target_t *t)
 {
     tcp_reception_complete_t *pend;
-    
-    pend = (tcp_reception_complete_t *)t->pend_completions.event.tllist.next;
-    tllist_remove(&pend->event.tllist);
-    __insert_event(&pend->event);
+   
+    assert(t);
+    if (t->n_pend_completions) {
+        pend = (tcp_reception_complete_t *)t->pend_completions.event.tllist.next;
+        tllist_remove(&pend->event.tllist);
+        --t->n_pend_completions;
+        __insert_event(&pend->event);
 
-    t->pending = pend;
+        t->pending = pend;
+    }
 }
 
 void handle_tcp_xmit_received (const event_t *e)
@@ -105,15 +108,20 @@ void handle_tcp_xmit_received (const event_t *e)
     tcp_reception_ack_t tra;
     const tllist_t *insert_point;
     nonrep_target_t *t;
+    tick_t xmit_remaining;
     
     assert (e);
     assert (trc);
     t = nrt + txr->target_num;
 
     trc->event.create_time = e->tllist.time;
+    xmit_remaining = derived.chunk_xmit_duration - trc->credit;
+        // TODO derived.chunk_tcp_xmit_duration should be distinct
+        // and very slightly longer than chunk_udp_xmit_duration
+        // even with a non-existent "perfect" TCP congestion control algorihtm.
+    
     trc->event.tllist.time =
-        e->tllist.time + derived.chunk_xmit_duration * t->n_pend_completions;
-        // TODO: TCP overhead is slightly more per KB
+        e->tllist.time + xmit_remaining * t->n_pend_completions;
  
     if (t->pending)
         move_first_event_back_to_pending_list(t);

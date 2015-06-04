@@ -60,7 +60,7 @@ typedef struct chunkput_nonreplicast {
 
 typedef struct chunkput {
     unsigned sig;               // must be 0xABCD
-    unsigned count;             // sequence # (starting at 1) for all chunks
+    unsigned seqnum;             // sequence # (starting at 1) for all chunks
                                 // put as part of this simulation
     unsigned remaining_chunks;  // # of chunkputs after this one for same object
     tick_t   started;           // When processing of this chunk started
@@ -91,7 +91,7 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
     }
 }
 
-static unsigned n_chunkputs = 0;
+unsigned n_chunkputs = 0;
 
 static void select_nonrep_targets (chunkput_t *c)
 
@@ -135,10 +135,11 @@ void handle_object_put_ready (const event_t *e)
     cpr.event.tllist.time = e->tllist.time + 1;
     cpr.cp = (chunk_put_handle_t)cp;
     cp->sig = 0xABCD;
-    cp->count = ++n_chunkputs;
+    cp->seqnum = ++n_chunkputs;
     cp->started = e->tllist.time;
     cp->remaining_chunks = opr->n_chunks - 1;
     cp->replicas_unacked = config.n_replicas;
+    assert(cp->replicas_unacked);
     cpr.event.type = REP_CHUNK_PUT_READY;
     if (replicast)
         cp->u.replicast.ng = rand() % config.n_negotiating_groups;
@@ -158,9 +159,10 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
     assert(!cp->mbz);
  
     cp->sig = 0xABCD;
-    cp->count = ++n_chunkputs;
+    cp->seqnum = ++n_chunkputs;
     cp->started = cpr.event.create_time = now;
     cp->replicas_unacked = config.n_replicas;
+    assert(cp->replicas_unacked);
     cp->remaining_chunks = prior_chunk->remaining_chunks - 1;
 
     cpr.event.create_time = now;
@@ -311,14 +313,14 @@ static  void select_targets (chunk_put_handle_t cp,
     qsort(bids,nbids,sizeof(bid_t),bid_compare);
     for (n = 0; n != nbids; ++n)
         fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Target:%d\n",
-                c->count,bids[n].start,bids[n].lim,bids[n].queue_depth,
+                c->seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
                 bids[n].target_num);
     for (n = 0; n + config.n_replicas <= nbids; ++n) {
         if (acceptable_bid_set(bids+n,&start,&lim)) {
             bids[0].start = start;
             bids[0].lim = lim;
             fprintf(bid_f,"BIDS:CP #,%d,Now,%ld,Accepted,%ld,%ld,TARGET",
-                    c->count,now,start,lim);
+                    c->seqnum,now,start,lim);
             for (m = 0,max_qdepth = 0; m != config.n_replicas; ++m) {
                 if (bids[n+m].queue_depth > max_qdepth)
                     max_qdepth = bids[n+m].queue_depth;
@@ -362,7 +364,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     assert(p);
     assert(!p->mbz);
     assert(p->sig == 0xABCD);
-    assert(p->count);
+    assert(p->seqnum);
     assert(0 < p->u.replicast.responses_uncollected);
     assert(p->u.replicast.responses_uncollected <= config.n_targets_per_ng);
     assert(replicast);
@@ -425,9 +427,10 @@ void handle_replica_put_ack (const event_t *e)
     assert(c);
     assert(!c->mbz);
     assert(c->sig == 0xABCD);
-    assert(c->count);
+    assert(c->seqnum);
     assert(rpa->target_num < derived.n_targets);
-    assert(0 < c->replicas_unacked && c->replicas_unacked <= config.n_replicas);
+    assert(c->replicas_unacked);
+    assert(c->replicas_unacked <= config.n_replicas);
     
     if (rpa->write_qdepth > c->write_qdepth)
         c->write_qdepth = rpa->write_qdepth;
@@ -460,11 +463,11 @@ bool handle_chunk_put_ack (const event_t *e)
     assert(e);
     cp = (chunkput_t *)cpa->cp;
     cp->done = e->tllist.time;
-    assert(cp->count);
+    assert(cp->seqnum);
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
-    if ((was_tracked = cp->count <= derived.n_tracked_puts) != 0) {
-        fprintf(log_f,"Completion,%d,duration msec,%0.3f\n",cp->count,
+    if ((was_tracked = cp->seqnum <= derived.n_tracked_puts) != 0) {
+        fprintf(log_f,"Completion,%d,duration msec,%0.3f\n",cp->seqnum,
                 ((float)duration)/(10*1024*1024));
         if (duration < track.min_duration) track.min_duration = duration;
         if (duration > track.max_duration) track.max_duration = duration;
@@ -547,7 +550,7 @@ unsigned chunk_seq (chunk_put_handle_t cp)
     const chunkput_t *p = (const chunkput_t *)cp;
     
     assert(p->sig == 0xABCD);
-    assert(p->count);
-    return p->count;
+    assert(p->seqnum);
+    return p->seqnum;
 }
 
