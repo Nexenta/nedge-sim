@@ -455,6 +455,7 @@ int main(int argc, const char * argv[]) {
     fprintf(log_f,"Simulating Replicast\n");
     fprintf(bid_f,"Simulating Replicast\n");
 
+    replicast = true;
     init_rep_targets(derived.n_targets);
     simulate(true);
     release_rep_targets();
@@ -462,6 +463,7 @@ int main(int argc, const char * argv[]) {
     fprintf(log_f,"Simulating Non-replicast\n");
     fprintf(bid_f,"Simulating Non-replicast\n");
     n_chunkputs = 0;
+    replicast = false;
     init_nonrep_targets(derived.n_targets);
     simulate(false);
     release_nonrep_targets();

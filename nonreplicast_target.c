@@ -24,7 +24,7 @@ typedef struct nonrep_target_t {
 // reservations and when the last disk write completion would have occurred.
 //
 
-static nonrep_target_t *nrt;
+static nonrep_target_t *nrt = NULL;
 
 void init_nonrep_targets(unsigned n_targets)
 //
@@ -34,6 +34,9 @@ void init_nonrep_targets(unsigned n_targets)
 //
 {
     unsigned n;
+    
+    assert(!replicast);
+    
     nrt = (nonrep_target_t *)calloc(n_targets,sizeof(nonrep_target_t));
     
     for (n = 0;n != n_targets;++n) {
@@ -47,6 +50,7 @@ void init_nonrep_targets(unsigned n_targets)
 
 void release_nonrep_targets (void)
 {
+    assert(!replicast);
     free(nrt);
     nrt = (nonrep_target_t *)0;
 }
@@ -112,6 +116,7 @@ void handle_tcp_xmit_received (const event_t *e)
     
     assert (e);
     assert (trc);
+    assert(!replicast);
     t = nrt + txr->target_num;
 
     trc->event.create_time = e->tllist.time;
@@ -132,7 +137,8 @@ void handle_tcp_xmit_received (const event_t *e)
     trc->event.type = TCP_RECEPTION_COMPLETE;
     trc->cp = txr->cp;
     trc->target_num = txr->target_num;
-    insert_point = tllist_find(&t->pend_completions.event.tllist,trc->event.tllist.time);
+    insert_point = tllist_find(&t->pend_completions.event.tllist,
+                               trc->event.tllist.time);
     tllist_insert((tllist_t *)insert_point,&trc->event.tllist);
     ++t->n_pend_completions;
     
@@ -152,6 +158,7 @@ void handle_tcp_reception_complete (const event_t *e)
     tick_t write_start;
 
     assert (e); (void)e;
+    assert(!replicast);
     t = nrt + trc->target_num;
     
     credit_ongoing_receptions(t,e->tllist.time);
@@ -169,6 +176,6 @@ void handle_tcp_reception_complete (const event_t *e)
     dwc.target_num = trc->target_num;
     dwc.write_qdepth = t->common.write_qdepth++;
     dwc.qptr = &t->common.write_qdepth;
-    move_first_pending_completion_to_event_list (t);
+    move_first_pending_completion_to_event_list(t);
     insert_event(dwc);
 }

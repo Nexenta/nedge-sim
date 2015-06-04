@@ -23,7 +23,7 @@ typedef struct rep_target_t {
 // reservations and when the last disk write completion would have occurred.
 //
 
-static rep_target_t *rept;
+static rep_target_t *rept = NULL;
 
 void init_rep_targets(unsigned n_targets)
 //
@@ -36,6 +36,7 @@ void init_rep_targets(unsigned n_targets)
     
     rept = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
     assert(rept);
+    assert(replicast);
     
     for (n=0;n != n_targets;++n)
         rept[n].ir_head.tllist.next = rept[n].ir_head.tllist.prev =
@@ -79,6 +80,7 @@ static void make_bid (unsigned target_num,
     assert(start);
     assert(ir);
     assert(target_num < derived.n_targets);
+    assert(replicast);
     
     // make initial guess
     *start = now;
@@ -131,6 +133,8 @@ void handle_rep_chunk_put_request_received (const event_t *e)
     rep_chunk_put_response_received_t cpresp;
     
     assert(e);
+    assert(replicast);
+    
     cpresp.event.create_time = e->tllist.time;
     cpresp.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
     cpresp.event.type = REP_CHUNK_PUT_RESPONSE_RECEIVED;

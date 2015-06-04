@@ -19,8 +19,8 @@ void handle_disk_write_completion (const event_t *e)
     disk_write_completion_t *dwc = (disk_write_completion_t *)e;
     replica_put_ack_t new_event;
     assert(e);
+    assert(chunk_seq(dwc->cp));
 
-    
     new_event.event.create_time = e->tllist.time;
     new_event.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
     new_event.event.type = REPLICA_PUT_ACK;
@@ -29,11 +29,9 @@ void handle_disk_write_completion (const event_t *e)
     assert(*dwc->qptr);
     --*dwc->qptr;
     
-    assert(chunk_seq(dwc->cp));
-    
     new_event.target_num = dwc->target_num;
-    new_event.write_qdepth = dwc->write_qdepth;
     assert(dwc->target_num < derived.n_targets);
+    new_event.write_qdepth = dwc->write_qdepth;
     
     insert_event (new_event);
 }

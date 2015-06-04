@@ -49,7 +49,7 @@ extern sim_config_t config;
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
 #define CHUNKS_PER_OBJECT 10
-#define TRACKED_OBJECT_PUTS 1000
+#define TRACKED_OBJECT_PUTS 100
 #define CLUSTER_UTILIZATION 50
 
 typedef struct sim_derived_config {
@@ -66,6 +66,5 @@ extern sim_derived_config_t derived;
 
 #define CLUSTER_TRIP_TIME       (2*10*1024)
 
-#define NDEBUG
 
 #endif

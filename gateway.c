@@ -80,7 +80,7 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
     tcp_xmit_received_t txr;
     unsigned r;
     
-    if (--cp->replicas_unacked) {
+    if (cp->replicas_unacked > 1) {
         txr.event.create_time = time_now;
         txr.event.tllist.time = time_now + CLUSTER_TRIP_TIME;
         txr.event.type = TCP_XMIT_RECEIVED;
