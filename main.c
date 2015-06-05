@@ -162,9 +162,9 @@ void _insert_event (const event_t *new_event,size_t event_size)
     __insert_event(n);
 }
 
-static void log_event (const event_t *e)
+static void log_event (FILE *f,const event_t *e)
 
-// Output the event as a single text line in CSV format
+// Output the event as a single text line in CSV format to 'f'
 
 {
     unsigned i;
@@ -186,24 +186,24 @@ static void log_event (const event_t *e)
     switch (e->type) {
         case OBJECT_PUT_READY:
             u.opr = (const object_put_ready_t *)e;
-            fprintf(log_f,"%ld,%ld,OBJECT_PUT_READY,%d\n",
+            fprintf(f,"%ld,%ld,OBJECT_PUT_READY,%d\n",
                     e->tllist.time,e->create_time,u.opr->n_chunks);
             break;
         case REP_CHUNK_PUT_READY:
             u.cpr = (const rep_chunk_put_ready_t *)e;
-            fprintf(log_f,"%ld,%ld,CHUNK_PUT_READY,0x%lx,%d\n",
+            fprintf(f,"%ld,%ld,CHUNK_PUT_READY,0x%lx,%d\n",
                     e->tllist.time,e->create_time,
                     u.cpr->cp,chunk_seq(u.cpr->cp));
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
             u.cpreq = (const rep_chunk_put_request_received_t *)e;
-            fprintf(log_f,"%ld,%ld,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.cpreq->cp,
                     chunk_seq(u.cpreq->cp),u.cpreq->target_num);
             break;
         case REP_CHUNK_PUT_RESPONSE_RECEIVED:
             u.cpresp = (const rep_chunk_put_response_received_t *)e;
-            fprintf(log_f,
+            fprintf(f,
                     "%ld,%ld,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,%ld,%ld\n",
                     e->tllist.time,e->create_time,u.cpresp->cp,
                     chunk_seq(u.cpresp->cp),u.cpresp->target_num,
@@ -212,7 +212,7 @@ static void log_event (const event_t *e)
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
             u.cpa = (const rep_chunk_put_accept_t *)e;
 
-            fprintf(log_f,
+            fprintf(f,
                     "%ld,%ld,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,%d,%ld,%ld",
                     e->tllist.time,e->create_time,
                     u.cpa->cp,chunk_seq(u.cpa->cp),
@@ -220,51 +220,51 @@ static void log_event (const event_t *e)
                     u.cpa->window_start,u.cpa->window_lim);
             
             for (i=0;i != N_REPLICAS;++i)
-                fprintf (log_f,",%d",u.cpa->accepted_target[i]);
-            fprintf(log_f,"\n");
+                fprintf (f,",%d",u.cpa->accepted_target[i]);
+            fprintf(f,"\n");
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
             u.rtr = (const rep_rendezvous_xfer_received_t *)e;
-            fprintf(log_f,"%ld,%ld,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.rtr->cp,chunk_seq(u.rtr->cp),
                     u.rtr->target_num);
             break;
         case TCP_XMIT_RECEIVED:
             u.txr = (const tcp_xmit_received_t *)e;
-            fprintf(log_f,"%ld,%ld,TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.txr->cp,chunk_seq(u.txr->cp),
                     u.txr->target_num);
             break;
         case TCP_RECEPTION_COMPLETE:
             u.trc = (const tcp_reception_complete_t *)e;
-            fprintf(log_f,"%ld,%ld,TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.trc->cp,chunk_seq(u.trc->cp),
                     u.trc->target_num);
             break;
         case TCP_RECEPTION_ACK:
             u.tra = (const tcp_reception_ack_t *)e;
-            fprintf(log_f,"%ld,%ld,TCP_RECEPTION_ACK,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,TCP_RECEPTION_ACK,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.tra->cp,chunk_seq(u.tra->cp),u.tra->target_num);
             break;
         case DISK_WRITE_COMPLETION:
             u.dwc = (const disk_write_completion_t *)e;
-            fprintf(log_f,"%ld,%ld,DISK_WRITE_COMPLETION,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,DISK_WRITE_COMPLETION,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.dwc->cp,chunk_seq(u.dwc->cp),
                     u.dwc->target_num);
             break;
         case REPLICA_PUT_ACK:
             u.rpack = (const replica_put_ack_t *)e;
-            fprintf(log_f,"%ld,%ld,REPLICA_PUT_ACK,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,REPLICA_PUT_ACK,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
             u.cpack = (const chunk_put_ack_t *)e;
-            fprintf(log_f,"%ld,%ld,CHUNK_PUT_ACK,0x%lx\n",
+            fprintf(f,"%ld,%ld,CHUNK_PUT_ACK,0x%lx\n",
                     e->tllist.time,e->create_time,u.cpack->cp);
             break;
         case NULL_EVENT:
@@ -274,6 +274,9 @@ static void log_event (const event_t *e)
 }
 
 static void insert_next_put (tick_t insert_time)
+
+// insert the next object_put_ready event for the current object
+
 {
     object_put_ready_t new_put;
     
@@ -290,6 +293,9 @@ static unsigned n_tracked_completions = 0;
 static unsigned n_chunk_puts = 0;
 
 static void process_event (const event_t *e)
+
+// process a single event
+
 {
     now = e->tllist.time;
     switch (e->type) {
@@ -364,7 +370,6 @@ static void simulate (bool do_replicast)
          n_tracked_completions < derived.n_tracked_puts;
          e = (const event_t *)ehead.tllist.next)
     {
-        tllist_verify((const tllist_t *)&ehead);
         if (next_object_put_event < e->tllist.time) {
             insert_next_put(next_object_put_event);
             e = (const event_t *)ehead.tllist.next;
@@ -378,7 +383,7 @@ static void simulate (bool do_replicast)
         assert (e != &ehead);
         assert (e->type != NULL_EVENT);
         process_event(e);
-        if (log_f) log_event(e);
+        if (log_f) log_event(log_f,e);
         event_remove((event_t *)e);
         tllist_verify((const tllist_t *)&ehead);
     }

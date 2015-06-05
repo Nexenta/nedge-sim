@@ -467,7 +467,7 @@ bool handle_chunk_put_ack (const event_t *e)
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
     if ((was_tracked = cp->seqnum <= derived.n_tracked_puts) != 0) {
-        fprintf(log_f,"Completion,%d,duration msec,%0.3f\n",cp->seqnum,
+        fprintf(log_f,"Completion,%d,duration msec,%04.3f\n",cp->seqnum,
                 ((float)duration)/(10*1024*1024));
         if (duration < track.min_duration) track.min_duration = duration;
         if (duration > track.max_duration) track.max_duration = duration;
