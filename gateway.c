@@ -80,7 +80,7 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
     tcp_xmit_received_t txr;
     unsigned r;
     
-    if (cp->replicas_unacked > 1) {
+    if (cp->replicas_unacked) {
         txr.event.create_time = time_now;
         txr.event.tllist.time = time_now + CLUSTER_TRIP_TIME;
         txr.event.type = TCP_XMIT_RECEIVED;
@@ -459,6 +459,7 @@ bool handle_chunk_put_ack (const event_t *e)
     chunkput_t *cp;
     tick_t duration;
     bool was_tracked;
+    char *tag = replicast ? "replicast" : "non";
     
     assert(e);
     cp = (chunkput_t *)cpa->cp;
@@ -467,8 +468,9 @@ bool handle_chunk_put_ack (const event_t *e)
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
     if ((was_tracked = cp->seqnum <= derived.n_tracked_puts) != 0) {
-        fprintf(log_f,"Completion,%d,duration msec,%04.3f\n",cp->seqnum,
-                ((float)duration)/(10*1024*1024));
+        fprintf(log_f,"%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
+                tag,cp->seqnum,
+                ((float)duration)/(10*1024*1024),cp->write_qdepth);
         if (duration < track.min_duration) track.min_duration = duration;
         if (duration > track.max_duration) track.max_duration = duration;
         track.total_duration += duration;
@@ -507,6 +509,7 @@ bool handle_chunk_put_ack (const event_t *e)
         cp->write_qdepth = MAX_WRITE_QDEPTH;
     ++track.write_qdepth_tally[cp->write_qdepth];
     cp->sig = 0xDEAD;
+    assert(!cp->replicas_unacked);
     free(cp);
 
     assert(!track.mbz);

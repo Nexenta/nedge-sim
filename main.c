@@ -144,7 +144,6 @@ void __insert_event (event_t *n)
     tllist_insert (after,(tllist_t*)n);
     tllist_node_verify(after);
     tllist_node_verify((tllist_t *)n);
-    tllist_verify((tllist_t *)&ehead);
     ++event_depth_by_type[n->type];
     ++edepth;
 }
