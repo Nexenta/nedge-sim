@@ -102,19 +102,6 @@ static void schedule_tcp_reception_complete (
     trc.cp = cp;
     assert (nrt <= t  &&  t < &nrt[derived.n_targets]);
     trc.target_num = (unsigned)(t - nrt);
-    if (t->n_ongoing_receptions > 1) {
-        printf("\nNow 0x%lx Target %d # ongoing receptions %d\n",now,
-               trc.target_num,t->n_ongoing_receptions);
-        for (ort = (ongoing_reception_t *)t->orhead.tllist.next;
-             &ort->tllist != &t->orhead.tllist;
-             ort = (ongoing_reception_t *)ort->tllist.next)
-        {
-            printf("CP %d at 0x%lx with credit 0x%lx\n",chunk_seq(ort->cp),
-                   ort->tllist.time,ort->credit);
-        }
-        printf("Adding TRC Reception Complete at 0x%lx for target %d cp %d\n",
-               trc.event.tllist.time,trc.target_num,chunk_seq(cp));
-    }
     insert_event(trc);
 }
 
@@ -211,5 +198,6 @@ void handle_tcp_reception_complete (const event_t *e)
         ort_next = (ongoing_reception_t *)ort->tllist.next;
         tllist_remove(&ort->tllist);
         free(ort);
+        --t->n_ongoing_receptions;
     }
 }
