@@ -190,6 +190,7 @@ void handle_tcp_reception_complete (const event_t *e)
         t->last_disk_write_completion = dwc.event.tllist.time;
         dwc.event.type = DISK_WRITE_COMPLETION;
         dwc.cp = trc->cp;
+        assert(chunk_seq(trc->cp));
         dwc.target_num = trc->target_num;
         dwc.write_qdepth = t->common.write_qdepth++;
         dwc.qptr = &t->common.write_qdepth;
