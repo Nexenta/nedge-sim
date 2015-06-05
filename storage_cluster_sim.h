@@ -190,17 +190,13 @@ typedef struct tcp_reception_complete {
     event_t     event;          // tcp_reception_complete is an event
     chunk_put_handle_t  cp;     // Handle of the chunk put
     unsigned    target_num;     // Target where this reception completed
-    tick_t      credit;         // already received data
 } tcp_reception_complete_t;
 //
-// This event models completion of one TCP transmission (of 'cp') to a
-// specific target ('target_num')
-//
-// As a result the remaining competing flows will speed up (we generously
-// model this as being instantaneous) which will result in scheduling one of
-// the remaining flows completing.
-//
-// The disk write is also scheduled at this step, as descried for replicast.
+// This event models signals the schedule completion of the earliest
+// ongoing reception for 'target_num'. Note that if another tcp reception
+// was added in the interim that reception might not be actually complete.
+// In that case the amount actually transferred is calculated and a new
+// event is scheduled.
 //
 
 typedef struct tcp_reception_ack {

@@ -8,14 +8,19 @@
 
 #include "storage_cluster_sim.h"
 
+typedef struct ongoing_reception {
+    tllist_t    tllist; // time is time tcp reception started
+    tick_t  credited_thru;
+    tick_t  credit;
+    chunk_put_handle_t cp;
+} ongoing_reception_t;
+
 typedef struct nonrep_target_t {
     target_t    common;
+    unsigned n_ongoing_receptions;
+    ongoing_reception_t orhead;
     unsigned n_pend_completions;
-    tcp_reception_complete_t pend_completions;
-    tcp_reception_complete_t *pending;  // conceptual head of pend_completions
-                                        // but currently in the event list
     tick_t last_disk_write_completion;
-    tick_t prior_reception_time;
     unsigned mbz;
 } nonrep_target_t;
 //
@@ -38,14 +43,12 @@ void init_nonrep_targets(unsigned n_targets)
     assert(!replicast);
     
     nrt = (nonrep_target_t *)calloc(n_targets,sizeof(nonrep_target_t));
-    
-    for (n = 0;n != n_targets;++n) {
-        nrt[n].pend_completions.event.tllist.next =
-            &nrt[n].pend_completions.event.tllist;
-        nrt[n].pend_completions.event.tllist.prev =
-            &nrt[n].pend_completions.event.tllist;
-    }
+ 
     assert(nrt);
+    for (n = 0;n != n_targets;++n) {
+        nrt[n].orhead.tllist.next = nrt[n].orhead.tllist.prev =
+            &nrt[n].orhead.tllist;
+    }
 }
 
 void release_nonrep_targets (void)
@@ -58,49 +61,21 @@ void release_nonrep_targets (void)
 static void credit_ongoing_receptions (nonrep_target_t *t,tick_t time_now)
 {
     tllist_t *pnd;
-    tcp_reception_complete_t *trc;
-    tick_t elapsed_time,credit;
+    ongoing_reception_t *ort;
     
     assert (t);
-    elapsed_time = time_now - t->prior_reception_time;
-    t->prior_reception_time = time_now;
-    credit = elapsed_time/(t->n_pend_completions+1);
+    (void)ort;
+//    elapsed_time = time_now - t->prior_reception_time;
+//    t->prior_reception_time = time_now;
+//    credit = elapsed_time/(t->n_pend_completions+1);
     
-    for (pnd = t->pend_completions.event.tllist.next;
-         pnd != &t->pend_completions.event.tllist;
+    for (pnd = t->orhead.tllist.next;
+         pnd != &t->orhead.tllist;
          pnd = pnd->next)
     {
-        trc = (tcp_reception_complete_t *)pnd;
+        ort = (ongoing_reception_t *)pnd;
         
-        trc->credit += credit;
-    }
-}
-
-static void move_first_event_back_to_pending_list (nonrep_target_t *t)
-{
-    tcp_reception_complete_t *pend;
-    
-    assert(t);
-    pend = t->pending;
-    assert(pend);
-    tllist_remove(&pend->event.tllist);
-    tllist_insert(&t->pend_completions.event.tllist,&pend->event.tllist);
-    
-    t->pending = (tcp_reception_complete_t *)0;;
-}
-
-static void move_first_pending_completion_to_event_list (nonrep_target_t *t)
-{
-    tcp_reception_complete_t *pend;
-   
-    assert(t);
-    if (t->n_pend_completions) {
-        pend = (tcp_reception_complete_t *)t->pend_completions.event.tllist.next;
-        tllist_remove(&pend->event.tllist);
-        --t->n_pend_completions;
-        __insert_event(&pend->event);
-
-        t->pending = pend;
+ //       trc->credit += credit;
     }
 }
 
@@ -108,46 +83,22 @@ void handle_tcp_xmit_received (const event_t *e)
 
 {
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
+    ongoing_reception_t *ort = calloc(1,sizeof *ort);
     tcp_reception_complete_t *trc = calloc(1,sizeof *trc);
-    tcp_reception_ack_t tra;
-    const tllist_t *insert_point;
     nonrep_target_t *t;
-    tick_t xmit_remaining;
     
     assert (e);
     assert (trc);
     assert(!replicast);
-    t = nrt + txr->target_num;
+    t = nrt + txr->target_num; (void)t;
 
-    trc->event.create_time = e->tllist.time;
-    xmit_remaining = derived.chunk_xmit_duration - trc->credit;
-        // TODO derived.chunk_tcp_xmit_duration should be distinct
-        // and very slightly longer than chunk_udp_xmit_duration
-        // even with a non-existent "perfect" TCP congestion control algorihtm.
+    // give credit to existing ongoing_receptions
     
-    trc->event.tllist.time =
-        e->tllist.time + xmit_remaining * t->n_pend_completions;
- 
-    if (t->pending)
-        move_first_event_back_to_pending_list(t);
-    if (t->n_pend_completions) {
-        credit_ongoing_receptions(t,e->tllist.time);
-        move_first_pending_completion_to_event_list (t);
-    }
-    trc->event.type = TCP_RECEPTION_COMPLETE;
-    trc->cp = txr->cp;
-    trc->target_num = txr->target_num;
-    insert_point = tllist_find(&t->pend_completions.event.tllist,
-                               trc->event.tllist.time);
-    tllist_insert((tllist_t *)insert_point,&trc->event.tllist);
-    ++t->n_pend_completions;
+    ort->tllist.time = e->tllist.time;
+    ort->credited_thru = e->tllist.time;
+    // insert ort in t->orhead
     
-    tra.event.create_time = e->tllist.time;
-    tra.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
-    tra.event.type = TCP_RECEPTION_ACK;
-    tra.cp = txr->cp;
-    tra.target_num = txr->target_num;
-    insert_event(tra);
+    // if this was the first then schedule a tcp_reception_complete event
 }
 
 void handle_tcp_reception_complete (const event_t *e)
@@ -163,6 +114,7 @@ void handle_tcp_reception_complete (const event_t *e)
     
     credit_ongoing_receptions(t,e->tllist.time);
 
+    // while head or orhead is done
     dwc.event.create_time = e->tllist.time;
     
     write_start = (t->last_disk_write_completion > e->tllist.time)
@@ -176,6 +128,7 @@ void handle_tcp_reception_complete (const event_t *e)
     dwc.target_num = trc->target_num;
     dwc.write_qdepth = t->common.write_qdepth++;
     dwc.qptr = &t->common.write_qdepth;
-    move_first_pending_completion_to_event_list(t);
     insert_event(dwc);
+    
+    // if orhead next exists schedule the next tcp_reception_complete event
 }
