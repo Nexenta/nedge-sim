@@ -197,65 +197,63 @@ static void log_event (FILE *f,const event_t *e)
     } u;
     
     u.e = e;
-    
     switch (e->type) {
         case OBJECT_PUT_READY:
-            fprintf(f,"%ld,%ld,%s OBJECT_PUT_READY,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s OBJECT_PUT_READY,%d\n",
                     e->tllist.time,e->create_time,tag,u.opr->n_chunks);
             break;
         case REP_CHUNK_PUT_READY:
-            fprintf(f,"%ld,%ld,%s CHUNK_PUT_READY,0x%lx,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
                     e->tllist.time,e->create_time,tag,
                     u.cpr->cp,chunk_seq(u.cpr->cp));
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
-            fprintf(f,"%ld,%ld,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
+            fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.cpreq->cp,
                     chunk_seq(u.cpreq->cp),u.cpreq->target_num);
             break;
         case REP_CHUNK_PUT_RESPONSE_RECEIVED:
-            fprintf(f,
-                    "%ld,%ld,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,%ld,%ld\n",
+            fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,\n",
                     e->tllist.time,e->create_time,u.cpresp->cp,
-                    chunk_seq(u.cpresp->cp),u.cpresp->target_num,
-                    u.cpresp->bid_start,u.cpresp->bid_lim);
+                    chunk_seq(u.cpresp->cp),u.cpresp->target_num);
+            fprintf(f,"%ld,%ld\n",u.cpresp->bid_start,u.cpresp->bid_lim);
             break;
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
             fprintf(f,
-                    "%ld,%ld,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,%d,%ld,%ld",
+                    "0x%lx,0x%lx,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,CP,%d,",
                     e->tllist.time,e->create_time,
                     u.cpa->cp,chunk_seq(u.cpa->cp),
-                    u.cpa->target_num,
-                    u.cpa->window_start,u.cpa->window_lim);
-            
+                    u.cpa->target_num);
+            fprintf(f,"%ld,%ld,targets,",u.cpa->window_start,u.cpa->window_lim);
             for (i=0;i != N_REPLICAS;++i)
                 fprintf (f,",%d",u.cpa->accepted_target[i]);
             fprintf(f,"\n");
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
-            fprintf(f,"%ld,%ld,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
+            fprintf(f,
+                    "0x%lx,0x%lx,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.rtr->cp,chunk_seq(u.rtr->cp),
                     u.rtr->target_num);
             break;
         case TCP_XMIT_RECEIVED:
-            fprintf(f,"%ld,%ld,non TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
+            fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.txr->cp,chunk_seq(u.txr->cp),
                     u.txr->target_num);
             break;
         case TCP_RECEPTION_COMPLETE:
-            fprintf(f,"%ld,%ld,non TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
+            fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.trc->cp,chunk_seq(u.trc->cp),
                     u.trc->target_num);
             break;
         case TCP_RECEPTION_ACK:
-            fprintf(f,"%ld,%ld,non TCP_RECEPTION_ACK,0x%lx,%d,%d\n",
+            fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_ACK,0x%lx,%d,target,%d\n",
                     e->tllist.time,e->create_time,
                     u.tra->cp,chunk_seq(u.tra->cp),u.tra->target_num);
             break;
         case DISK_WRITE_COMPLETION:
-            fprintf(f,"%ld,%ld,%s DISK_WRITE_COMPLETION,0x%lx,%d,%d",
+            fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_COMPLETION,0x%lx,%d,%d",
                     e->tllist.time,e->create_time,tag,
                     u.dwc->cp,chunk_seq(u.dwc->cp),
                     u.dwc->target_num);
@@ -264,7 +262,7 @@ static void log_event (FILE *f,const event_t *e)
             break;
         case REPLICA_PUT_ACK:
             u.rpack = (const replica_put_ack_t *)e;
-            fprintf(f,"%ld,%ld,%s REPLICA_PUT_ACK,0x%lx,%d,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;

@@ -89,6 +89,8 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
         r = cp->u.nonrep.repnum++;
         txr.target_num = cp->u.nonrep.ch_targets[r];
         insert_event(txr);
+        fprintf(log_f,"Inserted TXR CP,0x%lx,%d,rep#,%d,target,%d\n",
+                txr.cp,chunk_seq(txr.cp),r,txr.target_num);
     }
 }
 
@@ -416,13 +418,29 @@ void handle_rep_chunk_put_response_received (const event_t *e)
         put_next_chunk_request(p,rendezvous_xfer_event.event.tllist.time);
 }
 
+static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
+{
+    unsigned  *p;
+    
+    for (p = c->u.nonrep.ch_targets;
+         p != c->u.nonrep.ch_targets+config.n_replicas;
+         ++p)
+    {
+        if (*p == target_num) {
+            *p = 0;
+            return;
+        }
+    }
+    assert(false);
+}
+
 void handle_tcp_reception_ack (const event_t *e)
 {
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     chunkput_t *c = (chunkput_t *)tra->cp;
     
-    ++c->u.nonrep.acked;
-    if (c->replicas_unacked) {
+    if (++c->u.nonrep.acked < config.n_replicas) {
+        remove_tcp_reception_target(c,tra->target_num);
         next_tcp_xmit(c,e->tllist.time);
     }
     else if (c->remaining_chunks)
@@ -462,8 +480,6 @@ static int    l100_idx = 0;
 static tick_t running_avg_duration = 0;
 static float  running_avg_stdev = 0;
 
-
-
 bool handle_chunk_put_ack (const event_t *e)
 {
     const chunk_put_ack_t *cpa = (const chunk_put_ack_t *)e;
@@ -479,12 +495,10 @@ bool handle_chunk_put_ack (const event_t *e)
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
     was_tracked = cp->seqnum <= derived.n_tracked_puts;
-    if (!replicast  ||  chunk_seq(cpa->cp) >= 11000) {
-        assert(chunk_seq(cpa->cp));
-    }
     if (was_tracked) {
-        fprintf(log_f,"%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
-                tag,cp->seqnum,
+        fprintf(log_f,
+                "0x%lx,%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
+                e->tllist.time,tag,cp->seqnum,
                 ((float)duration)/(10*1024*1024),cp->write_qdepth);
         if (duration < track.min_duration) track.min_duration = duration;
         if (duration > track.max_duration) track.max_duration = duration;

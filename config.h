@@ -48,7 +48,7 @@ extern sim_config_t config;
 #define MBS_SEC_PER_TARGET_DRIVE 500
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
-#define CHUNKS_PER_OBJECT 5
+#define CHUNKS_PER_OBJECT 10
 #define TRACKED_OBJECT_PUTS 1000
 #define CLUSTER_UTILIZATION 50
 
