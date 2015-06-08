@@ -97,6 +97,8 @@ static void schedule_tcp_reception_complete (
     
     trc.event.create_time = now;
     remaining_xfer = derived.chunk_xmit_duration - ort->credit;
+    assert(remaining_xfer > 0);
+    assert(t->n_ongoing_receptions);
     trc.event.tllist.time = now + remaining_xfer*t->n_ongoing_receptions;
     trc.event.type = TCP_RECEPTION_COMPLETE;
     trc.cp = cp;
@@ -160,10 +162,12 @@ void handle_tcp_reception_complete (const event_t *e)
 
 {
     const tcp_reception_complete_t *trc = (const tcp_reception_complete_t *)e;
+    tcp_reception_ack_t tcp_ack;
     ongoing_reception_t *ort,*ort_next;
     disk_write_completion_t dwc;
     nonrep_target_t *t;
     tick_t write_start;
+    unsigned n;
 
     assert (e); (void)e;
     assert(!replicast);
@@ -172,15 +176,25 @@ void handle_tcp_reception_complete (const event_t *e)
     assert(t->n_ongoing_receptions);
     credit_ongoing_receptions(t,e->tllist.time);
 
-    for (ort = (ongoing_reception_t *)t->orhead.tllist.next;
+    for (ort = (ongoing_reception_t *)t->orhead.tllist.next,n=0;
          &ort->tllist != &t->orhead.tllist;
-         ort = ort_next)
+         ort = ort_next,++n)
     {
         ort = (ongoing_reception_t *)t->orhead.tllist.next;
-        if (ort->credit <derived.chunk_xmit_duration) {
+        if (ort->credit < derived.chunk_xmit_duration) {
+            fprintf(log_f,"Repost TCP Reception for 0x%lx %d target %d",
+                    trc->cp,chunk_seq(trc->cp),trc->target_num);
+            fprintf(log_f,", #ongoing %d\n",t->n_ongoing_receptions);
             schedule_tcp_reception_complete (t,trc->cp);
             break;
         }
+        tcp_ack.event.create_time = e->tllist.time;
+        tcp_ack.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
+        tcp_ack.event.type = TCP_RECEPTION_ACK;
+        tcp_ack.cp = trc->cp;
+        tcp_ack.target_num = trc->target_num;
+        insert_event(tcp_ack);
+        
         dwc.event.create_time = e->tllist.time;
         write_start = (t->last_disk_write_completion > e->tllist.   time)
             ? t->last_disk_write_completion
@@ -195,8 +209,13 @@ void handle_tcp_reception_complete (const event_t *e)
         dwc.write_qdepth = t->common.write_qdepth++;
         dwc.qptr = &t->common.write_qdepth;
         insert_event(dwc);
+        fprintf(log_f,"Inserted dwc for cp,0x%lx,%d,n,%d\n",
+                dwc.cp,chunk_seq(dwc.cp),n);
+        if (chunk_seq(dwc.cp) > 1000)
+            assert(dwc.cp);
         
         ort_next = (ongoing_reception_t *)ort->tllist.next;
+        assert (ort->cp != ort_next->cp);
         tllist_remove(&ort->tllist);
         free(ort);
         --t->n_ongoing_receptions;

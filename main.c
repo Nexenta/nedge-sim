@@ -58,6 +58,16 @@ static event_t ehead = { // The list of events for gateways and targets
     .type = NULL_EVENT
 };
 
+static unsigned tllist_len (const tllist_t *head)
+{
+    unsigned n;
+    const tllist_t *p;
+    
+    for (n=0,p=head->next;p != head;p = p->next,++n)
+        ;
+    return n;
+}
+
 #ifdef NDEBUG
 #else
 void tllist_node_verify(const tllist_t *t)
@@ -159,6 +169,7 @@ void _insert_event (const event_t *new_event,size_t event_size)
     assert (n);
     memcpy(n,new_event,event_size);
     __insert_event(n);
+    assert(edepth == tllist_len(&ehead.tllist));
 }
 
 static void log_event (FILE *f,const event_t *e)
@@ -167,7 +178,10 @@ static void log_event (FILE *f,const event_t *e)
 
 {
     unsigned i;
+    const char *tag = replicast ? "rep" : "non";
+    
     union {
+        const event_t *e;
         const object_put_ready_t *opr;
         const rep_chunk_put_ready_t   *cpr;
         const rep_chunk_put_request_received_t *cpreq;
@@ -182,26 +196,24 @@ static void log_event (FILE *f,const event_t *e)
         const chunk_put_ack_t *cpack;
     } u;
     
+    u.e = e;
+    
     switch (e->type) {
         case OBJECT_PUT_READY:
-            u.opr = (const object_put_ready_t *)e;
-            fprintf(f,"%ld,%ld,OBJECT_PUT_READY,%d\n",
-                    e->tllist.time,e->create_time,u.opr->n_chunks);
+            fprintf(f,"%ld,%ld,%s OBJECT_PUT_READY,%d\n",
+                    e->tllist.time,e->create_time,tag,u.opr->n_chunks);
             break;
         case REP_CHUNK_PUT_READY:
-            u.cpr = (const rep_chunk_put_ready_t *)e;
-            fprintf(f,"%ld,%ld,CHUNK_PUT_READY,0x%lx,%d\n",
-                    e->tllist.time,e->create_time,
+            fprintf(f,"%ld,%ld,%s CHUNK_PUT_READY,0x%lx,%d\n",
+                    e->tllist.time,e->create_time,tag,
                     u.cpr->cp,chunk_seq(u.cpr->cp));
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
-            u.cpreq = (const rep_chunk_put_request_received_t *)e;
             fprintf(f,"%ld,%ld,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.cpreq->cp,
                     chunk_seq(u.cpreq->cp),u.cpreq->target_num);
             break;
         case REP_CHUNK_PUT_RESPONSE_RECEIVED:
-            u.cpresp = (const rep_chunk_put_response_received_t *)e;
             fprintf(f,
                     "%ld,%ld,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,%ld,%ld\n",
                     e->tllist.time,e->create_time,u.cpresp->cp,
@@ -209,8 +221,6 @@ static void log_event (FILE *f,const event_t *e)
                     u.cpresp->bid_start,u.cpresp->bid_lim);
             break;
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
-            u.cpa = (const rep_chunk_put_accept_t *)e;
-
             fprintf(f,
                     "%ld,%ld,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,%d,%ld,%ld",
                     e->tllist.time,e->create_time,
@@ -223,48 +233,45 @@ static void log_event (FILE *f,const event_t *e)
             fprintf(f,"\n");
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
-            u.rtr = (const rep_rendezvous_xfer_received_t *)e;
             fprintf(f,"%ld,%ld,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,u.rtr->cp,chunk_seq(u.rtr->cp),
                     u.rtr->target_num);
             break;
         case TCP_XMIT_RECEIVED:
-            u.txr = (const tcp_xmit_received_t *)e;
-            fprintf(f,"%ld,%ld,TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,non TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.txr->cp,chunk_seq(u.txr->cp),
                     u.txr->target_num);
             break;
         case TCP_RECEPTION_COMPLETE:
-            u.trc = (const tcp_reception_complete_t *)e;
-            fprintf(f,"%ld,%ld,TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,non TCP_RECEPTION_COMPLETE,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.trc->cp,chunk_seq(u.trc->cp),
                     u.trc->target_num);
             break;
         case TCP_RECEPTION_ACK:
-            u.tra = (const tcp_reception_ack_t *)e;
-            fprintf(f,"%ld,%ld,TCP_RECEPTION_ACK,0x%lx,%d,%d\n",
+            fprintf(f,"%ld,%ld,non TCP_RECEPTION_ACK,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,
                     u.tra->cp,chunk_seq(u.tra->cp),u.tra->target_num);
             break;
         case DISK_WRITE_COMPLETION:
-            u.dwc = (const disk_write_completion_t *)e;
-            fprintf(f,"%ld,%ld,DISK_WRITE_COMPLETION,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,
+            fprintf(f,"%ld,%ld,%s DISK_WRITE_COMPLETION,0x%lx,%d,%d",
+                    e->tllist.time,e->create_time,tag,
                     u.dwc->cp,chunk_seq(u.dwc->cp),
                     u.dwc->target_num);
+            fprintf(f,",target,%d,qdepth,%d\n",u.dwc->target_num,
+                    u.dwc->write_qdepth);
             break;
         case REPLICA_PUT_ACK:
             u.rpack = (const replica_put_ack_t *)e;
-            fprintf(f,"%ld,%ld,REPLICA_PUT_ACK,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,u.rpack->cp,
+            fprintf(f,"%ld,%ld,%s REPLICA_PUT_ACK,0x%lx,%d,%d\n",
+                    e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
             u.cpack = (const chunk_put_ack_t *)e;
-            fprintf(f,"%ld,%ld,CHUNK_PUT_ACK,0x%lx\n",
-                    e->tllist.time,e->create_time,u.cpack->cp);
+            fprintf(f,"%ld,%ld,%s CHUNK_PUT_ACK,0x%lx\n",
+                    e->tllist.time,e->create_time,tag,u.cpack->cp);
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -289,13 +296,13 @@ tick_t now = 0;
 
 static unsigned n_tracked_completions = 0;
 
-static unsigned n_chunk_puts = 0;
-
 static void process_event (const event_t *e)
 
 // process a single event
 
 {
+    unsigned untracked_completions = 0;
+    
     now = e->tllist.time;
     switch (e->type) {
         case OBJECT_PUT_READY:
@@ -303,7 +310,6 @@ static void process_event (const event_t *e)
             break;
         case REP_CHUNK_PUT_READY:
             handle_chunk_put_ready (e);
-            ++n_chunk_puts;
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
             handle_rep_chunk_put_request_received(e);
@@ -334,7 +340,15 @@ static void process_event (const event_t *e)
             break;
         case CHUNK_PUT_ACK:
             if (handle_chunk_put_ack(e)) {
-                ++n_tracked_completions;
+                if (replicast)
+                    ++n_tracked_completions;
+                else
+                    ++n_tracked_completions;
+            }
+            else if (replicast)
+                ++untracked_completions;
+            else {
+                ++untracked_completions;
             }
             break;
         case NULL_EVENT:
@@ -381,13 +395,16 @@ static void simulate (bool do_replicast)
         assert(e->sig == 0x1234);
         assert (e != &ehead);
         assert (e->type != NULL_EVENT);
-        process_event(e);
         if (log_f) log_event(log_f,e);
+        process_event(e);
         event_remove((event_t *)e);
         tllist_verify((const tllist_t *)&ehead);
     }
     report_duration_stats();
     while (e != (const event_t *)&ehead) {
+        assert(e->sig == 0x1234);
+        assert (e != &ehead);
+        assert (e->type != NULL_EVENT);
         process_event(e);
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
@@ -466,7 +483,8 @@ int main(int argc, const char * argv[]) {
 
     fprintf(log_f,"Simulating Non-replicast\n");
     fprintf(bid_f,"Simulating Non-replicast\n");
-    n_chunkputs = 0;
+
+    init_seqnum();
     replicast = false;
     init_nonrep_targets(derived.n_targets);
     simulate(false);

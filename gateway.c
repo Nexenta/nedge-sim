@@ -56,6 +56,7 @@ typedef struct chunkput_replicast {
 typedef struct chunkput_nonreplicast {
     unsigned ch_targets[MAX_REPLICAS]; // selected targets
     unsigned repnum;                    // # of replicas previously generated.
+    unsigned acked;
 } chunkput_nonreplicast_t;
 
 typedef struct chunkput {
@@ -91,8 +92,14 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
     }
 }
 
-unsigned n_chunkputs = 0;
+static unsigned mbz2 = 0;
+static unsigned n_chunkputs = 0;
+static unsigned copy_chunkputs = 0;
+static unsigned mbz3 = 0;
 
+void init_seqnum(void) {
+    copy_chunkputs = n_chunkputs = 0;
+}
 static void select_nonrep_targets (chunkput_t *c)
 
 // select config.n_replicas different targets
@@ -135,7 +142,10 @@ void handle_object_put_ready (const event_t *e)
     cpr.event.tllist.time = e->tllist.time + 1;
     cpr.cp = (chunk_put_handle_t)cp;
     cp->sig = 0xABCD;
-    cp->seqnum = ++n_chunkputs;
+    assert(!mbz2);
+    assert (n_chunkputs == copy_chunkputs);
+    assert(!mbz3);
+    cp->seqnum = copy_chunkputs = ++n_chunkputs;
     cp->started = e->tllist.time;
     cp->remaining_chunks = opr->n_chunks - 1;
     cp->replicas_unacked = config.n_replicas;
@@ -159,7 +169,7 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
     assert(!cp->mbz);
  
     cp->sig = 0xABCD;
-    cp->seqnum = ++n_chunkputs;
+    cp->seqnum = copy_chunkputs = ++n_chunkputs;
     cp->started = cpr.event.create_time = now;
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
@@ -411,6 +421,7 @@ void handle_tcp_reception_ack (const event_t *e)
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     chunkput_t *c = (chunkput_t *)tra->cp;
     
+    ++c->u.nonrep.acked;
     if (c->replicas_unacked) {
         next_tcp_xmit(c,e->tllist.time);
     }
@@ -467,7 +478,11 @@ bool handle_chunk_put_ack (const event_t *e)
     assert(cp->seqnum);
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
-    if ((was_tracked = cp->seqnum <= derived.n_tracked_puts) != 0) {
+    was_tracked = cp->seqnum <= derived.n_tracked_puts;
+    if (!replicast  ||  chunk_seq(cpa->cp) >= 11000) {
+        assert(chunk_seq(cpa->cp));
+    }
+    if (was_tracked) {
         fprintf(log_f,"%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
                 tag,cp->seqnum,
                 ((float)duration)/(10*1024*1024),cp->write_qdepth);
@@ -504,12 +519,12 @@ bool handle_chunk_put_ack (const event_t *e)
             memset(last100_durations, 0, DURATION_SAMPLE_SIZE * sizeof(tick_t));
             l100_idx = 0;
         }
+        if (cp->write_qdepth > MAX_WRITE_QDEPTH)
+            cp->write_qdepth = MAX_WRITE_QDEPTH;
+        ++track.write_qdepth_tally[cp->write_qdepth];
     }
-    if (cp->write_qdepth > MAX_WRITE_QDEPTH)
-        cp->write_qdepth = MAX_WRITE_QDEPTH;
-    ++track.write_qdepth_tally[cp->write_qdepth];
-    cp->sig = 0xDEAD;
     assert(!cp->replicas_unacked);
+    memset(cp,0xFE,sizeof *cp);
     free(cp);
 
     assert(!track.mbz);
