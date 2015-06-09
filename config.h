@@ -66,5 +66,6 @@ extern sim_derived_config_t derived;
 
 #define CLUSTER_TRIP_TIME       (2*10*1024)
 
+#define NDEBUG
 
 #endif

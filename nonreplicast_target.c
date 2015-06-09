@@ -9,18 +9,21 @@
 #include "storage_cluster_sim.h"
 
 typedef struct ongoing_reception {
+    // tracks an ongoing TCP reception to a target
     tllist_t    tllist; // time is time tcp reception started
-    tick_t  credit;
-    tick_t  credited_thru;
-    chunk_put_handle_t cp;
+    tick_t  credit;    // how many bits have been simulated
+    tick_t  credited_thru;  // thru when?
+    chunk_put_handle_t cp;  // for which chunk?
 } ongoing_reception_t;
 
 typedef struct nonrep_target_t {
-    target_t    common;
-    unsigned n_ongoing_receptions;
-    ongoing_reception_t orhead;
-    tick_t last_disk_write_completion;
-    unsigned mbz;
+    // Track a non-replicast target
+    target_t    common; // common tracking fields
+    unsigned n_ongoing_receptions;  // # of ongoing TCP receptions
+    ongoing_reception_t orhead;     // tllist head of ongoing TCP receptions
+    tick_t last_disk_write_completion;  // last disk write completion for
+                                        // this target
+    unsigned mbz;   // debugging paranoia
 } nonrep_target_t;
 //
 // A struct target represents the target specific data that each individual
@@ -81,11 +84,6 @@ static void credit_ongoing_receptions (nonrep_target_t *t,tick_t time_now)
         elapsed_time = time_now - ort->credited_thru;
         ort->credited_thru = time_now;
         credit = divup(elapsed_time,t->n_ongoing_receptions);
-        if (ort->credit) {
-            fprintf(log_f,"Adding credit @0x%lx,",time_now);
-            fprintf(log_f,"target,%ld,cp,%d,prior,0x%lx,adding,0x%lx\n",
-                    t-nrt,chunk_seq(ort->cp),ort->credit,credit);
-        }
         ort->credit += credit;
     }
 }
@@ -112,11 +110,6 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     trc.cp = cp;
     assert (target_num < derived.n_targets);
     trc.target_num = target_num;
-    fprintf(log_f,"Inserting TCP_RECEPTION_COMPLETE @0x%lx,target,%d",
-            trc.event.tllist.time,target_num);
-    fprintf(log_f,",cp,0x%lx,%d",cp,chunk_seq(cp));
-    fprintf(log_f,",remaining_xfer,%ld,now,0x%lx\n",remaining_xfer,now
-            );
     insert_event(trc);
 }
 
@@ -167,13 +160,6 @@ void handle_tcp_xmit_received (const event_t *e)
     ort->credited_thru = e->tllist.time;
     ort->cp = txr->cp;
     
-    // DEBUG: check for duplicates
-    for (p = (ongoing_reception_t *)t->orhead.tllist.next;
-         &p->tllist != &t->orhead.tllist;
-         p = (ongoing_reception_t *)p->tllist.next){
-        assert(p->cp != ort->cp);
-    }
-    
     insert_point = (tllist_t *)tllist_find(&t->orhead.tllist,ort->tllist.time);
     tllist_insert(insert_point,&ort->tllist);
 
@@ -223,11 +209,6 @@ void handle_tcp_reception_complete (const event_t *e)
         tcp_ack.cp = trc->cp;
         tcp_ack.target_num = trc->target_num;
         insert_event(tcp_ack);
-        fprintf(log_f,"Inserted TCP Reception Ack @0x%lx for cp 0x%lx %d",
-                tcp_ack.event.tllist.time,tcp_ack.cp,chunk_seq(tcp_ack.cp));
-        fprintf(log_f,",target,%d",tcp_ack.target_num);
-        fprintf(log_f,",credit,0x%lx,needed 0x%lx\n",ort->credit,
-                derived.chunk_xmit_duration);
         
         dwc.event.create_time = e->tllist.time;
         write_start = (t->last_disk_write_completion > e->tllist.   time)
@@ -243,11 +224,6 @@ void handle_tcp_reception_complete (const event_t *e)
         dwc.write_qdepth = t->common.write_qdepth++;
         dwc.qptr = &t->common.write_qdepth;
         insert_event(dwc);
-        fprintf(log_f,
-                "Inserted dwc @ 0x%lx for cp,0x%lx,%d,n,%d,ort,%p,target %d",
-                dwc.event.tllist.time,dwc.cp,chunk_seq(dwc.cp),n,ort,
-                dwc.target_num);
-        fprintf(log_f,",write_start,0x%lx\n",write_start);
         
         ort_next = (ongoing_reception_t *)ort->tllist.next;
         assert(ort_next);

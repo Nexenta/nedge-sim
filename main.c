@@ -179,8 +179,7 @@ static void log_event (FILE *f,const event_t *e)
 {
     unsigned i;
     const char *tag = replicast ? "rep" : "non";
-    
-    union {
+    union event_ptr_union {
         const event_t *e;
         const object_put_ready_t *opr;
         const rep_chunk_put_ready_t   *cpr;
@@ -261,18 +260,17 @@ static void log_event (FILE *f,const event_t *e)
                     u.dwc->write_qdepth);
             break;
         case REPLICA_PUT_ACK:
-            u.rpack = (const replica_put_ack_t *)e;
             fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,0x%lx,%d,%d\n",
                     e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
-            u.cpack = (const chunk_put_ack_t *)e;
             fprintf(f,"%ld,%ld,%s CHUNK_PUT_ACK,0x%lx\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp);
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
+            assert(false);
             break;
     }
 }
@@ -430,9 +428,8 @@ static void derive_config (void)
         (config.chunk_size+UDP_OVERHEAD_BYTES*chunk_udp_packets)*8L;
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
-    j = derived.chunk_disk_write_duration * config.n_replicas *
-        config.chunks_per_object;
-    j = divup(j,derived.n_targets);
+    j = derived.chunk_disk_write_duration * config.n_replicas;
+    j = divup(j*config.chunks_per_object,derived.n_targets);
     derived.ticks_per_object = divup(j*100L,config.cluster_utilization);
 }
 

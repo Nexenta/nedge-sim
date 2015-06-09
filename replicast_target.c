@@ -10,12 +10,13 @@
 
 static unsigned total_reservations = 0;
 
-typedef struct rep_target_t {
-    target_t    common;
-    inbound_reservation_t ir_head;
-    unsigned ir_queue_depth;
-    tick_t last_disk_write_completion;
-    unsigned mbz;
+typedef struct rep_target_t {       // Track replicast target
+    target_t    common;             // common fields
+    inbound_reservation_t ir_head;  // tllist of inbound reservations
+    unsigned ir_queue_depth;        // # of inbound reservations
+    tick_t last_disk_write_completion;  // last disk write completion for
+                                        // this target
+    unsigned mbz;   // debugging paranoia
 } rep_target_t;
 //
 // A struct target represents the target specific data that each individual

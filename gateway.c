@@ -45,6 +45,7 @@ typedef struct bid {
 #define MAX_TARGETS_PER_NG 20
 
 typedef struct chunkput_replicast {
+    // replicast-specific ortion of chunkput_t
     unsigned ng;     // Chunk has been assigned to this NG
     bid_t    bids[MAX_TARGETS_PER_NG];
         // collected bid response
@@ -54,12 +55,13 @@ typedef struct chunkput_replicast {
 } chunkput_replicast_t;
 
 typedef struct chunkput_nonreplicast {
+    // non-repicast specfici portion of chunkput_t
     unsigned ch_targets[MAX_REPLICAS]; // selected targets
     unsigned repnum;                    // # of replicas previously generated.
     unsigned acked;
 } chunkput_nonreplicast_t;
 
-typedef struct chunkput {
+typedef struct chunkput {       // track gateway-specific info about a chunkput
     unsigned sig;               // must be 0xABCD
     unsigned seqnum;             // sequence # (starting at 1) for all chunks
                                 // put as part of this simulation
@@ -77,6 +79,10 @@ typedef struct chunkput {
 } chunkput_t;
 
 static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
+
+// Schedule the next TCP transmit start after the previous tcp transmit for
+// the same object has completed
+
 {
     tcp_xmit_received_t txr;
     unsigned r;
@@ -89,19 +95,19 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
         r = cp->u.nonrep.repnum++;
         txr.target_num = cp->u.nonrep.ch_targets[r];
         insert_event(txr);
-        fprintf(log_f,"Inserted TXR CP,0x%lx,%d,rep#,%d,target,%d\n",
-                txr.cp,chunk_seq(txr.cp),r,txr.target_num);
     }
 }
 
-static unsigned mbz2 = 0;
 static unsigned n_chunkputs = 0;
-static unsigned copy_chunkputs = 0;
-static unsigned mbz3 = 0;
 
-void init_seqnum(void) {
-    copy_chunkputs = n_chunkputs = 0;
+void init_seqnum(void)
+
+// re-initialize the chunk sequence numbers for another run through the chunks.
+
+{
+    n_chunkputs = 0;
 }
+
 static void select_nonrep_targets (chunkput_t *c)
 
 // select config.n_replicas different targets
@@ -115,7 +121,7 @@ static void select_nonrep_targets (chunkput_t *c)
     
     assert (config.n_replicas < derived.n_targets);
     
-    fprintf(log_f,"CP,0x%p,%d,targets",c,c->seqnum);
+    fprintf(log_f,"@0x%lx,CP,0x%p,%d,targets selected",now,c,c->seqnum);
     for (n = 0; n != config.n_replicas;++n) {
         t = rand() % derived.n_targets;
         for (i = 0; i < n; ++i) {
@@ -147,10 +153,8 @@ void handle_object_put_ready (const event_t *e)
     cpr.event.tllist.time = e->tllist.time + 1;
     cpr.cp = (chunk_put_handle_t)cp;
     cp->sig = 0xABCD;
-    assert(!mbz2);
-    assert (n_chunkputs == copy_chunkputs);
-    assert(!mbz3);
-    cp->seqnum = copy_chunkputs = ++n_chunkputs;
+
+    cp->seqnum = ++n_chunkputs;
     cp->started = e->tllist.time;
     cp->remaining_chunks = opr->n_chunks - 1;
     cp->replicas_unacked = config.n_replicas;
@@ -162,6 +166,9 @@ void handle_object_put_ready (const event_t *e)
 }
 
 static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
+
+// Generate thenext Chunk Put Ready event for the current object
+
 {
     chunkput_t *cp = (chunkput_t *)calloc(1,sizeof(chunkput_t));
     rep_chunk_put_ready_t cpr;
@@ -173,15 +180,11 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
     assert(!cp->mbz);
  
     cp->sig = 0xABCD;
-    cp->seqnum = copy_chunkputs = ++n_chunkputs;
+    cp->seqnum = ++n_chunkputs;
     cp->started = cpr.event.create_time = now;
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
     cp->remaining_chunks = prior_chunk->remaining_chunks - 1;
-    fprintf(log_f,"Allocated CP,0x%p,%d,started,0x%lx,unacked,%d,",
-            cp,cp->seqnum,cp->started,cp->replicas_unacked);
-    fprintf(log_f,"replicast,%d,chunks remaining,%d\n",replicast,
-            cp->remaining_chunks);
 
     cpr.event.create_time = now;
     cpr.event.tllist.time = now + 1;
@@ -303,11 +306,13 @@ typedef struct trackers {
     tick_t total_duration;
     unsigned long n_completions;
     unsigned qdepth_tally[MAX_QDEPTH+1];
+    unsigned max_qdepth;
     unsigned write_qdepth_tally [MAX_WRITE_QDEPTH+1];
+    unsigned max_write_qdepth;
     unsigned mbz;
 } trackers_t;
 
-static trackers_t track = {0};
+static trackers_t track = {.min_duration = ~0L};
 
 static  void select_targets (chunk_put_handle_t cp,
                              unsigned nbids,
@@ -348,6 +353,7 @@ static  void select_targets (chunk_put_handle_t cp,
             fprintf(bid_f,",MaxQ,%d\n",max_qdepth);
             if (max_qdepth > MAX_QDEPTH) max_qdepth = MAX_QDEPTH;
             ++track.qdepth_tally[max_qdepth];
+            if (max_qdepth > track.max_qdepth) track.max_qdepth = max_qdepth;
             return;
         }
     }
@@ -426,6 +432,10 @@ void handle_rep_chunk_put_response_received (const event_t *e)
 }
 
 static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
+
+// this is a sanity checking diagnostic.
+// It does notcontribute to the final results.
+
 {
     unsigned  *p;
     
@@ -461,6 +471,9 @@ void handle_tcp_reception_ack (const event_t *e)
 }
 
 void handle_replica_put_ack (const event_t *e)
+
+// Simulate storage layer ack of a specific replica put being delivered to the
+// gateway that originated the transaction.
 {
     replica_put_ack_t *rpa = (replica_put_ack_t *)e;
     chunkput_t *c = (chunkput_t *)rpa->cp;
@@ -494,6 +507,10 @@ static tick_t running_avg_duration = 0;
 static float  running_avg_stdev = 0;
 
 bool handle_chunk_put_ack (const event_t *e)
+
+// Simulate handling ack of entire chunk put
+// return true if this chunk was trcked for statistics
+
 {
     const chunk_put_ack_t *cpa = (const chunk_put_ack_t *)e;
     chunkput_t *cp;
@@ -549,6 +566,8 @@ bool handle_chunk_put_ack (const event_t *e)
         if (cp->write_qdepth > MAX_WRITE_QDEPTH)
             cp->write_qdepth = MAX_WRITE_QDEPTH;
         ++track.write_qdepth_tally[cp->write_qdepth];
+        if (cp->write_qdepth > track.max_write_qdepth)
+            track.max_write_qdepth = cp->write_qdepth;
     }
     assert(!cp->replicas_unacked);
     if (!replicast) {
@@ -585,11 +604,11 @@ void report_duration_stats (void)
     }
     if (replicast) {
         printf("\nInbound Queue depth distribution:\n");
-        for (n=0;n < MAX_QDEPTH+1;++n)
+        for (n=0;n <= track.max_qdepth;++n)
             printf("([%d]:%d\n",n,track.qdepth_tally[n]);
     }
     printf("\nWrite Queue Depth distribution:\n");
-    for (n=0;n < MAX_WRITE_QDEPTH;++n)
+    for (n=0;n <= track.max_write_qdepth;++n)
         printf("[%d]:%d\n",n,track.write_qdepth_tally[n]);
     memset(&track,0,sizeof(trackers_t));
     track.min_duration = ~0L;
