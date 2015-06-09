@@ -115,6 +115,7 @@ static void select_nonrep_targets (chunkput_t *c)
     
     assert (config.n_replicas < derived.n_targets);
     
+    fprintf(log_f,"CP,0x%p,%d,targets",c,c->seqnum);
     for (n = 0; n != config.n_replicas;++n) {
         t = rand() % derived.n_targets;
         for (i = 0; i < n; ++i) {
@@ -124,7 +125,9 @@ static void select_nonrep_targets (chunkput_t *c)
             }
         }
         c->u.nonrep.ch_targets[n] = t;
+        fprintf(log_f,",%d",t);
     }
+    fprintf(log_f,"\n");
 }
 
 void handle_object_put_ready (const event_t *e)
@@ -161,7 +164,6 @@ void handle_object_put_ready (const event_t *e)
 static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
 {
     chunkput_t *cp = (chunkput_t *)calloc(1,sizeof(chunkput_t));
-
     rep_chunk_put_ready_t cpr;
     
     assert(prior_chunk);
@@ -176,6 +178,10 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
     cp->remaining_chunks = prior_chunk->remaining_chunks - 1;
+    fprintf(log_f,"Allocated CP,0x%p,%d,started,0x%lx,unacked,%d,",
+            cp,cp->seqnum,cp->started,cp->replicas_unacked);
+    fprintf(log_f,"replicast,%d,chunks remaining,%d\n",replicast,
+            cp->remaining_chunks);
 
     cpr.event.create_time = now;
     cpr.event.tllist.time = now + 1;
@@ -396,6 +402,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
 
     rendezvous_xfer_event.event.create_time = accept_event.event.create_time;
     rendezvous_xfer_event.event.tllist.time = accept_event.window_lim;
+    assert(accept_event.window_lim > accept_event.event.create_time);
     rendezvous_xfer_event.event.type = REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
     
@@ -431,6 +438,8 @@ static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
             return;
         }
     }
+    fprintf(log_f,"WARNING,target,%d,not found for CP,0x%p,%d\n",
+            target_num,c,c->seqnum);
     assert(false);
 }
 
@@ -455,7 +464,7 @@ void handle_replica_put_ack (const event_t *e)
 {
     replica_put_ack_t *rpa = (replica_put_ack_t *)e;
     chunkput_t *c = (chunkput_t *)rpa->cp;
-    chunk_put_ack_t new_event;
+    chunk_put_ack_t put_ack_event;
 
     assert(c);
     assert(!c->mbz);
@@ -469,12 +478,12 @@ void handle_replica_put_ack (const event_t *e)
         c->write_qdepth = rpa->write_qdepth;
     
     if (!--c->replicas_unacked) {
-        new_event.event.create_time = e->tllist.time;
-        new_event.event.tllist.time = e->tllist.time + 1;
-        new_event.event.type = CHUNK_PUT_ACK;
-        new_event.cp = rpa->cp;
+        put_ack_event.event.create_time = e->tllist.time;
+        put_ack_event.event.tllist.time = e->tllist.time + 1;
+        put_ack_event.event.type = CHUNK_PUT_ACK;
+        put_ack_event.cp = rpa->cp;
 
-        insert_event(new_event);
+        insert_event(put_ack_event);
     }
 }
 

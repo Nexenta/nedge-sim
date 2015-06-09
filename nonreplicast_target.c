@@ -112,6 +112,11 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     trc.cp = cp;
     assert (target_num < derived.n_targets);
     trc.target_num = target_num;
+    fprintf(log_f,"Inserting TCP_RECEPTION_COMPLETE @0x%lx,target,%d",
+            trc.event.tllist.time,target_num);
+    fprintf(log_f,",cp,0x%lx,%d",cp,chunk_seq(cp));
+    fprintf(log_f,",remaining_xfer,%ld,now,0x%lx\n",remaining_xfer,now
+            );
     insert_event(trc);
 }
 
@@ -135,6 +140,7 @@ void handle_tcp_xmit_received (const event_t *e)
 {
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
     ongoing_reception_t *ort = calloc(1,sizeof *ort);
+    tllist_t *tp;
     ongoing_reception_t *p;
     tllist_t *insert_point;
  
@@ -144,9 +150,17 @@ void handle_tcp_xmit_received (const event_t *e)
     assert(!replicast);
     t = nrt + txr->target_num;
 
-    if (t->n_ongoing_receptions)
+    fprintf(log_f,"Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
+            ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
+    if (t->n_ongoing_receptions) {
         credit_ongoing_receptions(t,e->tllist.time);
-   
+        fprintf(log_f,",Prior CPs");
+        for (tp = t->orhead.tllist.next; tp != &t->orhead.tllist; tp = tp->next) {
+            p = (ongoing_reception_t *)tp;
+            fprintf(log_f,",0x%lx,%d",p->cp,chunk_seq(p->cp));
+        }
+    }
+    fprintf(log_f,"\n");
     assert(ort);
     ort->tllist.time = e->tllist.time;
     ort->credit = 0;
@@ -198,14 +212,9 @@ void handle_tcp_reception_complete (const event_t *e)
          &ort->tllist != &t->orhead.tllist;
          ort = ort_next,++n)
     {
-        ort = (ongoing_reception_t *)t->orhead.tllist.next;
         if (ort->credit < derived.chunk_xmit_duration) {
-            fprintf(log_f,"0x%lx,Repost TCP Reception for 0x%lx,%d,target,%d",
-                    e->tllist.time,trc->cp,chunk_seq(trc->cp),trc->target_num);
-            fprintf(log_f,",credit,0x%lx,need,0x%lx",ort->credit,
-                    derived.chunk_xmit_duration);
-            fprintf(log_f,",ort %p,#ongoing %d\n",ort,t->n_ongoing_receptions);
-            schedule_tcp_reception_complete (trc->target_num,trc->cp);
+            fprintf(log_f,"Repost,");
+            schedule_tcp_reception_complete (trc->target_num,ort->cp);
             break;
         }
         tcp_ack.event.create_time = e->tllist.time;
@@ -214,6 +223,11 @@ void handle_tcp_reception_complete (const event_t *e)
         tcp_ack.cp = trc->cp;
         tcp_ack.target_num = trc->target_num;
         insert_event(tcp_ack);
+        fprintf(log_f,"Inserted TCP Reception Ack @0x%lx for cp 0x%lx %d",
+                tcp_ack.event.tllist.time,tcp_ack.cp,chunk_seq(tcp_ack.cp));
+        fprintf(log_f,",target,%d",tcp_ack.target_num);
+        fprintf(log_f,",credit,0x%lx,needed 0x%lx\n",ort->credit,
+                derived.chunk_xmit_duration);
         
         dwc.event.create_time = e->tllist.time;
         write_start = (t->last_disk_write_completion > e->tllist.   time)
@@ -230,10 +244,14 @@ void handle_tcp_reception_complete (const event_t *e)
         dwc.qptr = &t->common.write_qdepth;
         insert_event(dwc);
         fprintf(log_f,
-                "Inserted tcp_ack/dwc for cp,0x%lx,%d,n,%d,ort,%p,target %d\n",
-                dwc.cp,chunk_seq(dwc.cp),n,ort,dwc.target_num);
+                "Inserted dwc @ 0x%lx for cp,0x%lx,%d,n,%d,ort,%p,target %d",
+                dwc.event.tllist.time,dwc.cp,chunk_seq(dwc.cp),n,ort,
+                dwc.target_num);
+        fprintf(log_f,",write_start,0x%lx\n",write_start);
         
         ort_next = (ongoing_reception_t *)ort->tllist.next;
+        assert(ort_next);
+        assert(&ort_next->tllist == &t->orhead.tllist || ort_next->cp != ort->cp);
         tllist_remove(&ort->tllist);
         memset(ort,0xFD,sizeof *ort);
         free(ort);
