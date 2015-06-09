@@ -104,7 +104,7 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     assert(ort  &&  &ort->tllist != &t->orhead.tllist);
     
     trc.event.create_time = now;
-    assert(derived.chunk_xmit_duration >= ort->credit);
+    assert(derived.chunk_xmit_duration > ort->credit);
     remaining_xfer = derived.chunk_xmit_duration - ort->credit;
     assert(t->n_ongoing_receptions);
     trc.event.tllist.time = now + remaining_xfer*t->n_ongoing_receptions;

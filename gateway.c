@@ -435,14 +435,18 @@ static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
 }
 
 void handle_tcp_reception_ack (const event_t *e)
+
+// Handle the TCP reception ack, which occurs before the REPLICA_ACK
+// The REPLICA_ACK occurs after the chunk replica is written.
+// The tcp ack is sent once the chunk has been received.
+
 {
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     chunkput_t *c = (chunkput_t *)tra->cp;
-    
-    if (++c->u.nonrep.acked < config.n_replicas) {
-        remove_tcp_reception_target(c,tra->target_num);
+ 
+    remove_tcp_reception_target(c,tra->target_num);
+    if (++c->u.nonrep.acked < config.n_replicas)
         next_tcp_xmit(c,e->tllist.time);
-    }
     else if (c->remaining_chunks)
         put_next_chunk_request (c,e->tllist.time);
 }
@@ -538,6 +542,11 @@ bool handle_chunk_put_ack (const event_t *e)
         ++track.write_qdepth_tally[cp->write_qdepth];
     }
     assert(!cp->replicas_unacked);
+    if (!replicast) {
+        assert(!cp->u.nonrep.ch_targets[0]);
+        assert(!cp->u.nonrep.ch_targets[1]);
+        assert(!cp->u.nonrep.ch_targets[2]);
+    }
     memset(cp,0xFE,sizeof *cp);
     free(cp);
 
