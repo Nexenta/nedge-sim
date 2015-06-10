@@ -14,6 +14,8 @@ typedef struct ongoing_reception {
     tick_t  credit;    // how many bits have been simulated
     tick_t  credited_thru;  // thru when?
     chunk_put_handle_t cp;  // for which chunk?
+    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for target
+                                // over lifespan of this reception.
 } ongoing_reception_t;
 
 typedef struct nonrep_target_t {
@@ -63,7 +65,10 @@ void release_nonrep_targets (void)
     nrt = (nonrep_target_t *)0;
 }
 
-static void credit_ongoing_receptions (nonrep_target_t *t,tick_t time_now)
+static void credit_ongoing_receptions (
+                                       nonrep_target_t *t,
+                                       unsigned current_num_receptions,
+                                       tick_t time_now)
 {
     tllist_t *pnd;
     ongoing_reception_t *ort;
@@ -85,6 +90,8 @@ static void credit_ongoing_receptions (nonrep_target_t *t,tick_t time_now)
         ort->credited_thru = time_now;
         credit = divup(elapsed_time,t->n_ongoing_receptions);
         ort->credit += credit;
+        if (current_num_receptions > ort->max_ongoing_rx)
+            ort->max_ongoing_rx = current_num_receptions;
     }
 }
 
@@ -146,7 +153,7 @@ void handle_tcp_xmit_received (const event_t *e)
     fprintf(log_f,"Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
             ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
     if (t->n_ongoing_receptions) {
-        credit_ongoing_receptions(t,e->tllist.time);
+        credit_ongoing_receptions(t,t->n_ongoing_receptions+1,e->tllist.time);
         fprintf(log_f,",Prior CPs");
         for (tp = t->orhead.tllist.next; tp != &t->orhead.tllist; tp = tp->next) {
             p = (ongoing_reception_t *)tp;
@@ -159,6 +166,7 @@ void handle_tcp_xmit_received (const event_t *e)
     ort->credit = 0;
     ort->credited_thru = e->tllist.time;
     ort->cp = txr->cp;
+    ort->max_ongoing_rx = t->n_ongoing_receptions + 1;
     
     insert_point = (tllist_t *)tllist_find(&t->orhead.tllist,ort->tllist.time);
     tllist_insert(insert_point,&ort->tllist);
@@ -192,7 +200,7 @@ void handle_tcp_reception_complete (const event_t *e)
     t = nrt + trc->target_num;
     
     assert(t->n_ongoing_receptions);
-    credit_ongoing_receptions(t,e->tllist.time);
+    credit_ongoing_receptions(t,t->n_ongoing_receptions,e->tllist.time);
 
     for (ort = (ongoing_reception_t *)t->orhead.tllist.next,n=0;
          &ort->tllist != &t->orhead.tllist;
@@ -208,6 +216,7 @@ void handle_tcp_reception_complete (const event_t *e)
         tcp_ack.event.type = TCP_RECEPTION_ACK;
         tcp_ack.cp = trc->cp;
         tcp_ack.target_num = trc->target_num;
+        tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
         insert_event(tcp_ack);
         
         dwc.event.create_time = e->tllist.time;

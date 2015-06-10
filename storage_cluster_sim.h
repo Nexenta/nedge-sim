@@ -203,6 +203,8 @@ typedef struct tcp_reception_ack {
     event_t event;          // tpc_reception_ack is an event
     chunk_put_handle_t  cp; // handle ofthe chunk put
     unsigned target_num;    // ack is from this target
+    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for target
+                                // over lifespan of this transmission.
 } tcp_reception_ack_t;
 
 typedef struct disk_write_completion {

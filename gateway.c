@@ -59,6 +59,7 @@ typedef struct chunkput_nonreplicast {
     unsigned ch_targets[MAX_REPLICAS]; // selected targets
     unsigned repnum;                    // # of replicas previously generated.
     unsigned acked;
+    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for any target
 } chunkput_nonreplicast_t;
 
 typedef struct chunkput {       // track gateway-specific info about a chunkput
@@ -470,6 +471,9 @@ void handle_tcp_reception_ack (const event_t *e)
     chunkput_t *c = (chunkput_t *)tra->cp;
  
     remove_tcp_reception_target(c,tra->target_num);
+    
+    if (tra->max_ongoing_rx > c->u.nonrep.max_ongoing_rx)
+        c->u.nonrep.max_ongoing_rx  = tra->max_ongoing_rx;
     if (++c->u.nonrep.acked < config.n_replicas)
         next_tcp_xmit(c,e->tllist.time);
     else if (c->remaining_chunks)
@@ -571,6 +575,13 @@ bool handle_chunk_put_ack (const event_t *e)
         }
         if (cp->write_qdepth > MAX_WRITE_QDEPTH)
             cp->write_qdepth = MAX_WRITE_QDEPTH;
+        if (!replicast) {
+            ++track.qdepth_tally[cp->u.nonrep.max_ongoing_rx];
+            ++track.n_qdepth_tally;
+            track.qdepth_total += cp->u.nonrep.max_ongoing_rx;
+            if (cp->u.nonrep.max_ongoing_rx > track.max_qdepth)
+                track.max_qdepth = cp->u.nonrep.max_ongoing_rx;
+        }
         ++track.write_qdepth_tally[cp->write_qdepth];
         ++track.n_write_qdepth_tally;
         track.write_dqepth_total += cp->write_qdepth;
@@ -578,11 +589,6 @@ bool handle_chunk_put_ack (const event_t *e)
             track.max_write_qdepth = cp->write_qdepth;
     }
     assert(!cp->replicas_unacked);
-    if (!replicast) {
-        assert(!cp->u.nonrep.ch_targets[0]);
-        assert(!cp->u.nonrep.ch_targets[1]);
-        assert(!cp->u.nonrep.ch_targets[2]);
-    }
     memset(cp,0xFE,sizeof *cp);
     free(cp);
 
@@ -610,8 +616,7 @@ void report_duration_stats (void)
                ((float)track.max_duration)/(10*1024*1024),max_x);
         printf("running-average-duration %ld\n", running_avg_duration);
         printf("running-average-stdev %f\n", running_avg_stdev);
-    }
-    if (replicast) {
+    
         printf("\nInbound Queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {
             printf("([%d]:%d",n,track.qdepth_tally[n]);
@@ -623,15 +628,15 @@ void report_duration_stats (void)
         }
         printf("Mean Average: %3.3f\n",
                ((float)track.qdepth_total)/track.n_qdepth_tally);
-    }
-    printf("\nWrite Queue Depth distribution:\n");
-    for (n=0,m = track.n_write_qdepth_tally/2;n <= track.max_write_qdepth;++n) {
-        printf("[%d]:%d",n,track.write_qdepth_tally[n]);
-        if (m > 0) {
-            m -= track.write_qdepth_tally[n];
-            if (m <=0) printf("<-- Median");
+        printf("\nWrite Queue Depth distribution:\n");
+        for (n=0,m = track.n_write_qdepth_tally/2;n <= track.max_write_qdepth;++n) {
+            printf("[%d]:%d",n,track.write_qdepth_tally[n]);
+            if (m > 0) {
+                m -= track.write_qdepth_tally[n];
+                if (m <=0) printf("<-- Median");
+            }
+            printf ("\n");
         }
-        printf ("\n");
     }
     printf("Mean Average: %3.3f\n",
            ((float)track.write_dqepth_total)/track.n_write_qdepth_tally);
