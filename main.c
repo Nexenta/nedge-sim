@@ -41,7 +41,8 @@ sim_config_t config = {
     .chunk_size = CHUNK_SIZE,
     .chunks_per_object = CHUNKS_PER_OBJECT,
     .tracked_object_puts = TRACKED_OBJECT_PUTS,
-    .cluster_utilization = CLUSTER_UTILIZATION
+    .cluster_utilization = CLUSTER_UTILIZATION,
+    .seed = 0x12345678
 };
 
 sim_derived_config_t derived;
@@ -361,9 +362,10 @@ static void simulate (bool do_replicast)
     const event_t *e;
 
     unsigned delta;
-    unsigned put_seed = 0x12345678;
+    unsigned put_seed = config.seed;
     
     replicast = do_replicast;
+    srand(config.seed+1);
     
     assert(!edepth);
 
@@ -460,10 +462,50 @@ static FILE *open_outf (const char *type)
 FILE *log_f;
 FILE *bid_f;
 
+static void usage (const char *progname) {
+    fprintf(stderr,"Usage: %s",progname);
+    fprintf(stderr," [ngs <#>]");
+    fprintf(stderr," [targets_per <#>]");
+    fprintf(stderr," [chunk_size <kbytes>]");
+    fprintf(stderr," [utilization <percent>]");
+    fprintf(stderr," [chunks_per_object <#>]");
+    fprintf(stderr," [objects <#>]\n");
+    
+    exit(1);
+}
+
+static void customize_config (int argc, const char ** argv)
+{
+    const char *argv0 = argv[0];
+    
+    if (argc <= 2) {
+        usage(argv0);
+    }
+    for (--argc,++argv;argc >= 2;argv+=2,argc-=2) {
+        if (0 == strcmp(*argv,"ngs"))
+            config.n_negotiating_groups = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"targets_per"))
+            config.n_targets_per_ng = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"chunk_size"))
+            config.chunk_size = atoi(argv[1])*1024;
+        else if (0 == strcmp(*argv,"utilization"))
+            config.cluster_utilization = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"chunks_per_object"))
+            config.chunks_per_object = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"objects"))
+            config.tracked_object_puts = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"seed"))
+            config.seed = atoi(argv[1]);
+        else
+            usage(argv0);
+    }
+}
+
 int main(int argc, const char * argv[]) {
 
     
     // TODO: accept command line customization of config
+    customize_config(argc,argv);
     derive_config();
     log_f = open_outf("log");
     bid_f = open_outf("bid");
