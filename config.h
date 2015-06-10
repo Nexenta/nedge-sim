@@ -43,14 +43,14 @@ typedef struct sim_config {
 extern sim_config_t config;
 
 // defaults
-#define N_NEGOTIATING_GROUPS 128
-#define N_TARGETS_PER_NG 8
+#define N_NEGOTIATING_GROUPS 256
+#define N_TARGETS_PER_NG 6
 #define MBS_SEC_PER_TARGET_DRIVE 500
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
 #define CHUNKS_PER_OBJECT 10
 #define TRACKED_OBJECT_PUTS 1000
-#define CLUSTER_UTILIZATION 50
+#define CLUSTER_UTILIZATION 80
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.
