@@ -373,7 +373,7 @@ static void simulate (bool do_replicast)
 
     next_object_put_event = rand_r(&put_seed) % (2*derived.ticks_per_object);
     
-    printf("Total %dKB Chunks %d.\n",config.chunk_size/1024,
+    printf("\nTotal number of %dKB Chunks: %d.\n",config.chunk_size/1024,
            derived.n_tracked_puts);
     e = (const event_t *)ehead.tllist.next;
     
@@ -474,6 +474,20 @@ static void usage (const char *progname) {
     exit(1);
 }
 
+static void log_config (FILE *f)
+{
+    fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
+    fprintf(f,"config.chunks_per_object:%d\n",config.chunks_per_object);
+    fprintf(f,"config.cluster_utilization:%d\n",config.cluster_utilization);
+    fprintf(f,"config.mbs_sec_per_target_drive:%d\n",
+            config.mbs_sec_per_target_drive);
+    fprintf(f,"config.n_negotiating_groups:%d\n",config.n_negotiating_groups);
+    fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
+    fprintf(f,"config.n_targets_per_neg%d\n",config.n_targets_per_ng);
+    fprintf(f,"config.seed:%d\n",config.seed);
+    fprintf(f,"config.tracked_object_puts:%d",config.tracked_object_puts);    
+}
+
 static void customize_config (int argc, const char ** argv)
 {
     const char *argv0 = argv[0];
@@ -513,6 +527,8 @@ int main(int argc, const char * argv[]) {
     fprintf(log_f,"Simulating Replicast\n");
     fprintf(bid_f,"Simulating Replicast\n");
 
+    log_config(log_f);
+    
     replicast = true;
     init_rep_targets(derived.n_targets);
     simulate(true);
