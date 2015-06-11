@@ -213,10 +213,10 @@ static void log_event (FILE *f,const event_t *e)
                     chunk_seq(u.cpreq->cp),u.cpreq->target_num);
             break;
         case REP_CHUNK_PUT_RESPONSE_RECEIVED:
-            fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,\n",
+            fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,%d,",
                     e->tllist.time,e->create_time,u.cpresp->cp,
                     chunk_seq(u.cpresp->cp),u.cpresp->target_num);
-            fprintf(f,"%ld,%ld\n",u.cpresp->bid_start,u.cpresp->bid_lim);
+            fprintf(f,"0x%lx,0x%lx\n",u.cpresp->bid_start,u.cpresp->bid_lim);
             break;
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
             fprintf(f,
@@ -230,10 +230,9 @@ static void log_event (FILE *f,const event_t *e)
             fprintf(f,"\n");
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
-            fprintf(f,
-                    "0x%lx,0x%lx,REP_CHUNK_RENDEZVOUS_XFER_RCVD,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,u.rtr->cp,chunk_seq(u.rtr->cp),
-                    u.rtr->target_num);
+            fprintf(f,"0x%lx,0x%lx",e->tllist.time,e->create_time);
+            fprintf(f,",REP_CHUNK_RENDEZVOUS_XFER_RCVD,CP,0x%lx,%d,Target,%d\n",
+                    u.rtr->cp,chunk_seq(u.rtr->cp),u.rtr->target_num);
             break;
         case TCP_XMIT_RECEIVED:
             fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,%d\n",
@@ -491,8 +490,9 @@ static void log_config (FILE *f)
 static void customize_config (int argc, const char ** argv)
 {
     const char *argv0 = argv[0];
+    bool debug = false;
     
-    if (argc <= 2) {
+    if (!debug && argc <= 2) {
         usage(argv0);
     }
     for (--argc,++argv;argc >= 2;argv+=2,argc-=2) {
