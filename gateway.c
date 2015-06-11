@@ -407,6 +407,9 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     accept_event.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
     accept_event.event.type = REP_CHUNK_PUT_ACCEPT_RECEIVED;
     accept_event.cp = cpr->cp;
+
+    memset(&accept_event.accepted_target[0],0,
+           sizeof accept_event.accepted_target);
     
     select_targets (cpr->cp,p->u.replicast.nbids,p->u.replicast.bids,
                     accept_event.accepted_target);
