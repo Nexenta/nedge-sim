@@ -90,7 +90,7 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
     
     if (cp->replicas_unacked) {
         txr.event.create_time = time_now;
-        txr.event.tllist.time = time_now + CLUSTER_TRIP_TIME*4;
+        txr.event.tllist.time = time_now + config.cluster_trip_time*4;
         txr.event.type = TCP_XMIT_RECEIVED;
         txr.cp = (chunk_put_handle_t)cp;
         r = cp->u.nonrep.repnum++;
@@ -208,7 +208,7 @@ void handle_chunk_put_ready (const event_t *e)
     assert (p);
     assert(!p->mbz);
     new_event.event.create_time = e->tllist.time;
-    new_event.event.tllist.time   = e->tllist.time + CLUSTER_TRIP_TIME;
+    new_event.event.tllist.time   = e->tllist.time + config.cluster_trip_time;
     new_event.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
     new_event.cp = (chunk_put_handle_t)p;
     if (replicast) {
@@ -404,7 +404,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     if (--p->u.replicast.responses_uncollected) return;
     
     accept_event.event.create_time = e->tllist.time;
-    accept_event.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
+    accept_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
     accept_event.event.type = REP_CHUNK_PUT_ACCEPT_RECEIVED;
     accept_event.cp = cpr->cp;
 

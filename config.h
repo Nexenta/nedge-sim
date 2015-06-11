@@ -13,6 +13,8 @@
 
 
 typedef struct sim_config {
+    unsigned cluster_trip_time;         // # of bit-times to send zero-length
+                                        // ethernet frame end-to-end.
     unsigned n_negotiating_groups;      // # of negotiating groups
     unsigned n_replicas;                // # of replicas per chunk, usually 3
     unsigned n_targets_per_ng;          // How many targets in each Negotiating
@@ -44,6 +46,8 @@ typedef struct sim_config {
 extern sim_config_t config;
 
 // defaults
+
+#define CLUSTER_TRIP_TIME       3500    // aprox 350 nanoseconds
 #define N_NEGOTIATING_GROUPS 256
 #define N_TARGETS_PER_NG 6
 #define MBS_SEC_PER_TARGET_DRIVE 500
@@ -68,7 +72,6 @@ typedef struct sim_derived_config {
 
 extern sim_derived_config_t derived;
 
-#define CLUSTER_TRIP_TIME       (2*10*1024)
 
 #define NDEBUG
 

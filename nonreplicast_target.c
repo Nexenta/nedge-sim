@@ -150,8 +150,8 @@ void handle_tcp_xmit_received (const event_t *e)
     assert(!replicast);
     t = nrt + txr->target_num;
 
-    fprintf(log_f,"Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
-            ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
+    fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
+            e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
     if (t->n_ongoing_receptions) {
         credit_ongoing_receptions(t,t->n_ongoing_receptions+1,e->tllist.time);
         fprintf(log_f,",Prior CPs");
@@ -212,7 +212,7 @@ void handle_tcp_reception_complete (const event_t *e)
             break;
         }
         tcp_ack.event.create_time = e->tllist.time;
-        tcp_ack.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
+        tcp_ack.event.tllist.time = e->tllist.time + config.cluster_trip_time;
         tcp_ack.event.type = TCP_RECEPTION_ACK;
         tcp_ack.cp = trc->cp;
         tcp_ack.target_num = trc->target_num;

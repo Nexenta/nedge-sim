@@ -22,7 +22,7 @@ void handle_disk_write_completion (const event_t *e)
     assert(chunk_seq(dwc->cp));
 
     new_event.event.create_time = e->tllist.time;
-    new_event.event.tllist.time = e->tllist.time + CLUSTER_TRIP_TIME;
+    new_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
     new_event.event.type = REPLICA_PUT_ACK;
     new_event.cp = dwc->cp;
     assert(dwc->qptr);

@@ -34,6 +34,7 @@
 #include "storage_cluster_sim.h"
 
 sim_config_t config = {
+    .cluster_trip_time = CLUSTER_TRIP_TIME,
     .n_negotiating_groups = N_NEGOTIATING_GROUPS,
     .n_targets_per_ng = N_TARGETS_PER_NG,
     .mbs_sec_per_target_drive = MBS_SEC_PER_TARGET_DRIVE,
@@ -265,8 +266,9 @@ static void log_event (FILE *f,const event_t *e)
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
-            fprintf(f,"%ld,%ld,%s CHUNK_PUT_ACK,0x%lx\n",
-                    e->tllist.time,e->create_time,tag,u.cpack->cp);
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d\n",
+                    e->tllist.time,e->create_time,tag,u.cpack->cp,
+                    u.cpack->write_qdepth);
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -296,7 +298,7 @@ static void process_event (const event_t *e)
 
 // process a single event
 
-{    
+{
     now = e->tllist.time;
     switch (e->type) {
         case OBJECT_PUT_READY:
@@ -471,13 +473,16 @@ static void usage (const char *progname) {
     fprintf(stderr," [chunk_size <kbytes>]");
     fprintf(stderr," [utilization <percent>]");
     fprintf(stderr," [chunks_per_object <#>]");
-    fprintf(stderr," [objects <#>]\n");
+    fprintf(stderr," [objects <#>],");
+    fprintf(stderr," [mbs_sec <#>,");
+    fprintf(stderr," [cluster_trip_time <ticks>\n");
     
     exit(1);
 }
 
 static void log_config (FILE *f)
 {
+    fprintf(f,"config.cluster_Trip_time:%d\n",config.cluster_trip_time);
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
     fprintf(f,"config.chunks_per_object:%d\n",config.chunks_per_object);
     fprintf(f,"config.cluster_utilization:%d\n",config.cluster_utilization);
@@ -485,7 +490,7 @@ static void log_config (FILE *f)
             config.mbs_sec_per_target_drive);
     fprintf(f,"config.n_negotiating_groups:%d\n",config.n_negotiating_groups);
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
-    fprintf(f,"config.n_targets_per_neg%d\n",config.n_targets_per_ng);
+    fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.tracked_object_puts:%d",config.tracked_object_puts);    
 }
@@ -513,6 +518,10 @@ static void customize_config (int argc, const char ** argv)
             config.tracked_object_puts = atoi(argv[1]);
         else if (0 == strcmp(*argv,"seed"))
             config.seed = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"mbs_sec"))
+            config.mbs_sec_per_target_drive = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"cluster_trip_time"))
+            config.cluster_trip_time = atoi(argv[1]);
         else
             usage(argv0);
     }
