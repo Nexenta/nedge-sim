@@ -52,7 +52,6 @@ void release_rep_targets (void)
 
 static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
-                      tick_t now,
                       tick_t *start,
                       tick_t *lim,
                       unsigned *qdepth)
@@ -77,6 +76,7 @@ static void make_bid (unsigned target_num,
     inbound_reservation_t *p;
     inbound_reservation_t *insert_after;
     rep_target_t *tp = rept + target_num;
+    tick_t s;
 
     assert(start);
     assert(ir);
@@ -84,8 +84,8 @@ static void make_bid (unsigned target_num,
     assert(replicast);
     
     // make initial guess
-    *start = now;
-    *lim = now+derived.chunk_xmit_duration*3;
+    *start = s = now + 2*CLUSTER_TRIP_TIME;
+    *lim = s + derived.chunk_xmit_duration*3;
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next;
          p != &tp->ir_head;
@@ -141,7 +141,7 @@ void handle_rep_chunk_put_request_received (const event_t *e)
     cpresp.event.type = REP_CHUNK_PUT_RESPONSE_RECEIVED;
     cpresp.cp = cpr->cp;
     cpresp.target_num = cpr->target_num;
-    make_bid(cpresp.target_num,cpresp.cp,e->tllist.time,
+    make_bid(cpresp.target_num,cpresp.cp,
              &cpresp.bid_start,&cpresp.bid_lim,&cpresp.qdepth);
     insert_event(cpresp);
 }
