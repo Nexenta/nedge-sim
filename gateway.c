@@ -513,12 +513,6 @@ void handle_replica_put_ack (const event_t *e)
     }
 }
 
-#define DURATION_SAMPLE_SIZE 100
-static tick_t last100_durations[DURATION_SAMPLE_SIZE];
-static int    l100_idx = 0;
-static tick_t running_avg_duration = 0;
-static float  running_avg_stdev = 0;
-
 bool handle_chunk_put_ack (const event_t *e)
 
 // Simulate handling ack of entire chunk put
@@ -548,34 +542,6 @@ bool handle_chunk_put_ack (const event_t *e)
         track.total_duration += duration;
         ++track.n_completions;
 
-        if (l100_idx < DURATION_SAMPLE_SIZE) {
-            last100_durations[l100_idx] = duration;
-        }
-        l100_idx++;
-        if (l100_idx == DURATION_SAMPLE_SIZE) {
-            int sample_average = 0;
-            float sample_stdev = 0;
-            int i;
-            for (i = 0; i < DURATION_SAMPLE_SIZE; i++) {
-                sample_average += last100_durations[i];
-            }
-            sample_average /= DURATION_SAMPLE_SIZE;
-            running_avg_duration =
-                (4 * running_avg_duration + 6 * sample_average) / 10;
-
-            for (i = 0; i < DURATION_SAMPLE_SIZE; i++) {
-                sample_stdev +=
-                    (last100_durations[i] - sample_average) *
-                    (last100_durations[i] - sample_average);
-            }
-            sample_stdev /= (DURATION_SAMPLE_SIZE - 1);
-            sample_stdev = sqrtf(sample_stdev);
-
-            running_avg_stdev = (4 * running_avg_stdev + 6 * sample_stdev) / 10;
-
-            memset(last100_durations, 0, DURATION_SAMPLE_SIZE * sizeof(tick_t));
-            l100_idx = 0;
-        }
         if (cp->write_qdepth > MAX_WRITE_QDEPTH)
             cp->write_qdepth = MAX_WRITE_QDEPTH;
         if (!replicast) {
@@ -608,7 +574,6 @@ void report_duration_stats (void)
     signed long m;
     unsigned n;
     
-    printf("\n\n# completions %ld\n",track.n_completions);
     if (track.n_completions) {
         avg = ((float)track.total_duration)/track.n_completions;
         avg_x = avg/track.min_duration;
@@ -617,8 +582,6 @@ void report_duration_stats (void)
                ((float)track.min_duration)/(10*1024*1024),
                avg/(10*1024*1024),avg_x,
                ((float)track.max_duration)/(10*1024*1024),max_x);
-        printf("running-average-duration %ld\n", running_avg_duration);
-        printf("running-average-stdev %f\n", running_avg_stdev);
     
         printf("\nInbound Queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {
@@ -632,7 +595,10 @@ void report_duration_stats (void)
         printf("Mean Average: %3.3f\n",
                ((float)track.qdepth_total)/track.n_qdepth_tally);
         printf("\nWrite Queue Depth distribution:\n");
-        for (n=0,m = track.n_write_qdepth_tally/2;n <= track.max_write_qdepth;++n) {
+        for (n=0,m = track.n_write_qdepth_tally/2;
+             n <= track.max_write_qdepth;
+             ++n)
+        {
             printf("[%d]:%d",n,track.write_qdepth_tally[n]);
             if (m > 0) {
                 m -= track.write_qdepth_tally[n];
