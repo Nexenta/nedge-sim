@@ -575,13 +575,15 @@ void report_duration_stats (void)
     unsigned n;
     
     if (track.n_completions) {
+        printf("total time 0x%lx ticks %6.3f msecs\n",now,
+               ((double_t)now)/(10L*1024*1024*1024/1000));
         avg = ((float)track.total_duration)/track.n_completions;
         avg_x = avg/track.min_duration;
         max_x = ((float)track.max_duration)/track.min_duration;
         printf("min msecs %3.3f average %3.3f (x%f) max %3.3f (x%f)\n",
-               ((float)track.min_duration)/(10*1024*1024),
-               avg/(10*1024*1024),avg_x,
-               ((float)track.max_duration)/(10*1024*1024),max_x);
+               ((float)track.min_duration)/(10L*1024*1024*1024/1000),
+               avg/(10L*1024*1024*1024/1000),avg_x,
+               ((float)track.max_duration)/(10L*1024*1024*1024/1000),max_x);
     
         printf("\nInbound Queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {

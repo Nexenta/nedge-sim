@@ -296,9 +296,7 @@ static void process_event (const event_t *e)
 
 // process a single event
 
-{
-    unsigned untracked_completions = 0;
-    
+{    
     now = e->tllist.time;
     switch (e->type) {
         case OBJECT_PUT_READY:
@@ -335,17 +333,8 @@ static void process_event (const event_t *e)
             handle_replica_put_ack(e);
             break;
         case CHUNK_PUT_ACK:
-            if (handle_chunk_put_ack(e)) {
-                if (replicast)
-                    ++n_tracked_completions;
-                else
-                    ++n_tracked_completions;
-            }
-            else if (replicast)
-                ++untracked_completions;
-            else {
-                ++untracked_completions;
-            }
+            if (handle_chunk_put_ack(e))
+                ++n_tracked_completions;
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -421,7 +410,7 @@ static void derive_config (void)
     derived.n_targets = config.n_negotiating_groups * config.n_targets_per_ng;
     derived.n_tracked_puts = config.chunks_per_object * config.tracked_object_puts;
     derived.total_write_mbs =
-        derived.n_tracked_puts * config.chunk_size / 1024L /1024L;
+        divup(derived.n_tracked_puts * config.chunk_size,1024L*1024L);
     derived.disk_kb_write_time =
         (unsigned)((TICKS_PER_SECOND/1024L)/config.mbs_sec_per_target_drive);
     chunk_udp_packets = (config.chunk_size + UDP_SIZE_BYTES - 1)/UDP_SIZE_BYTES;
@@ -432,6 +421,20 @@ static void derive_config (void)
     j = derived.chunk_disk_write_duration * config.n_replicas;
     j = divup(j*config.chunks_per_object,derived.n_targets);
     derived.ticks_per_object = divup(j*100L,config.cluster_utilization);
+    //
+    // The following derived fields are never actually used, but they were
+    // useful for sanity checking the overall calculations.
+    // mbs_per_sec_per_target should be utilization/100 of
+    // config.mbs_per_second_per_target_drive
+    //
+    derived.objects_per_second = (unsigned)
+        divup(TICKS_PER_SECOND,derived.ticks_per_object);
+    derived.objects_per_second_per_target = divup(derived.objects_per_second,
+                                                  derived.n_targets);
+    derived.mbs_per_second_per_target =
+        divup(derived.objects_per_second_per_target*config.chunk_size*
+              config.n_replicas*config.chunks_per_object,
+              1024L*1024L);
 }
 
 static FILE *open_outf (const char *type)

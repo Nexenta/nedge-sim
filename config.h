@@ -61,6 +61,9 @@ typedef struct sim_derived_config {
     tick_t chunk_xmit_duration;     // How long does it take to send a chunk?
     tick_t chunk_disk_write_duration;   // How long does it take to write it?
     tick_t ticks_per_object;        // average # of ticks between object puts
+    unsigned objects_per_second;    // # of object puts per second
+    unsigned objects_per_second_per_target; // per target
+    unsigned mbs_per_second_per_target; 
 } sim_derived_config_t;
 
 extern sim_derived_config_t derived;
