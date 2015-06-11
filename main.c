@@ -524,6 +524,7 @@ int main(int argc, const char * argv[]) {
     log_f = open_outf("log");
     bid_f = open_outf("bid");
 
+    printf("\n\nSimulating Replicast\n");
     fprintf(log_f,"Simulating Replicast\n");
     fprintf(bid_f,"Simulating Replicast\n");
 
@@ -534,6 +535,7 @@ int main(int argc, const char * argv[]) {
     simulate(true);
     release_rep_targets();
 
+    printf("\n\nSimulating Non-replicast\n");
     fprintf(log_f,"Simulating Non-replicast\n");
     fprintf(bid_f,"Simulating Non-replicast\n");
 
