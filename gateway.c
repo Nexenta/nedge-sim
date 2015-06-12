@@ -79,6 +79,35 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
     unsigned mbz;               // must be zero
 } chunkput_t;
 
+//
+// Extraordinarily Generous TCP modeling
+//
+// This simulation credits TCP with more brains than it actually has.
+//
+// We presume a congestion control algorithm that *insantly* adjusts to the
+// current number of flows, and can run at 100% capacity. It could never be
+// that good. But by modelling an obtainable limit we allow for future
+// congestion control algorithm improvements. The simuation will still show
+// the benefits of multicast communications no matter how generously we model
+// TCP congestion control.
+//
+// Some other simplifications (also too generous)
+//
+//      We do not model the reverse flow acks at all. We assume they arrive in
+//      time and never slow delivery down. TCP does an excellent job of
+//      minimizing the traffic impact of its acks, but does not reach this
+//      level of non-interference.
+//
+//      Real TCP connection setup is not congestion controlled. Replicast
+//      Rendezvous negotiations are. We generously assume no retransmissions
+//      for unsolicited packets, but Replicast will actually take stakes to
+//      achieve this.
+
+#define MINIMUM_TCPV6_BYTES 74
+#define TCP_CHUNK_SETUP_BYTES (4*MINIMUM_TCPV6_BYTES+200)
+    // 4 packets for TCP connectino setup plus minimal pre-transfer data
+    // The cluster_trip_time must still be added to this.
+
 static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
 
 // Schedule the next TCP transmit start after the previous tcp transmit for
@@ -90,7 +119,8 @@ static void next_tcp_xmit (chunkput_t *cp,tick_t time_now)
     
     if (cp->replicas_unacked) {
         txr.event.create_time = time_now;
-        txr.event.tllist.time = time_now + config.cluster_trip_time*4;
+        txr.event.tllist.time = time_now + config.cluster_trip_time*4 +
+                                TCP_CHUNK_SETUP_BYTES*8;
         txr.event.type = TCP_XMIT_RECEIVED;
         txr.cp = (chunk_put_handle_t)cp;
         r = cp->u.nonrep.repnum++;
@@ -161,8 +191,7 @@ void handle_object_put_ready (const event_t *e)
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
     cpr.event.type = REP_CHUNK_PUT_READY;
-    if (replicast)
-        cp->u.replicast.ng = rand() % config.n_negotiating_groups;
+
     insert_event (cpr);
 }
 
@@ -199,6 +228,9 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
 
 // add time for delay of unsolicited packet size
 
+#define MINIMUM_UDPV6_BYTES 66
+#define CHUNK_PUT_REQUEST_BYTES (MINIMUM_UDPV6_BYTES+200)
+
 void handle_chunk_put_ready (const event_t *e)
 {
     const rep_chunk_put_ready_t *cpp = (const rep_chunk_put_ready_t *)e;
@@ -208,7 +240,8 @@ void handle_chunk_put_ready (const event_t *e)
     assert (p);
     assert(!p->mbz);
     new_event.event.create_time = e->tllist.time;
-    new_event.event.tllist.time   = e->tllist.time + config.cluster_trip_time;
+    new_event.event.tllist.time   = e->tllist.time + config.cluster_trip_time +
+                                    CHUNK_PUT_REQUEST_BYTES*8;
     new_event.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
     new_event.cp = (chunk_put_handle_t)p;
     if (replicast) {
@@ -294,7 +327,7 @@ static bool acceptable_bid_set (const bid_t *bids,
         if (b->lim < window_lim) window_lim = b->lim;
     }
     *start = window_start;
-    *lim = window_start + derived.chunk_xmit_duration;
+    *lim = window_start + derived.chunk_udp_xmit_duration;
     return window_lim >= *lim;
 }
 
@@ -570,13 +603,15 @@ void report_duration_stats (void)
 // report and clear the accumulated duratin and qdepth stats
 
 {
-    float avg,avg_x,max_x;
+    float avg,avg_x,max_x,mbs,msecs;
     signed long m;
+    unsigned long total_write;
     unsigned n;
     
     if (track.n_completions) {
-        printf("total time 0x%lx ticks %6.3f msecs\n",now,
-               ((double_t)now)/(10L*1024*1024*1024/1000));
+        msecs = ((double_t)now)/(10L*1024*1024*1024/1000);
+        printf("n_completions %lu total time %6.3f msecs\n",
+               track.n_completions,msecs);
         avg = ((float)track.total_duration)/track.n_completions;
         avg_x = avg/track.min_duration;
         max_x = ((float)track.max_duration)/track.min_duration;
@@ -584,6 +619,11 @@ void report_duration_stats (void)
                ((float)track.min_duration)/(10L*1024*1024*1024/1000),
                avg/(10L*1024*1024*1024/1000),avg_x,
                ((float)track.max_duration)/(10L*1024*1024*1024/1000),max_x);
+        total_write = (unsigned long)track.n_completions * config.chunk_size *
+            config.n_replicas;
+        mbs = ((float)total_write)/(1024*1024) / derived.n_targets;
+        printf("Average Written per target %6.3f MBs\n",mbs);
+        printf("MB/sec Rate per target %6.3f\n",mbs*1000/msecs);
     
         printf("\nInbound Queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {

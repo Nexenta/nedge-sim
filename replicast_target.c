@@ -85,7 +85,7 @@ static void make_bid (unsigned target_num,
     
     // make initial guess
     *start = s = now + 2*config.cluster_trip_time;
-    *lim = s + derived.chunk_xmit_duration*3;
+    *lim = s + derived.chunk_udp_xmit_duration*3;
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next;
          p != &tp->ir_head;
@@ -105,7 +105,7 @@ static void make_bid (unsigned target_num,
         }
         // adjust guess to be after inbound_reservation p
         *start = p->lim + 1;
-        *lim = *start + derived.chunk_xmit_duration*2;
+        *lim = *start + derived.chunk_udp_xmit_duration*2;
     }
     ir->tllist.time = *start;
     ir->lim = *lim;

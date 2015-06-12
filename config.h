@@ -62,8 +62,9 @@ typedef struct sim_derived_config {
     unsigned n_tracked_puts;        // # of tracked chunk puts to perform
     unsigned long total_write_mbs;
     unsigned disk_kb_write_time;
-    tick_t chunk_xmit_duration;     // How long does it take to send a chunk?
-    tick_t chunk_disk_write_duration;   // How long does it take to write it?
+    tick_t chunk_udp_xmit_duration;     // How long to UDP send a chunk?
+    tick_t chunk_tcp_xmit_duration;     // How long to TCP send a chunk?
+    tick_t chunk_disk_write_duration;   // How long to write a chunk to disk?
     tick_t ticks_per_object;        // average # of ticks between object puts
     unsigned objects_per_second;    // # of object puts per second
     unsigned objects_per_second_per_target; // per target

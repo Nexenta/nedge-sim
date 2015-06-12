@@ -285,7 +285,7 @@ static void insert_next_put (tick_t insert_time)
     object_put_ready_t new_put;
     
     new_put.event.tllist.time = new_put.event.create_time = insert_time;
-    new_put.n_chunks = CHUNKS_PER_OBJECT;
+    new_put.n_chunks = config.chunks_per_object;
     new_put.event.type = OBJECT_PUT_READY;
     insert_event(new_put);
 }
@@ -350,7 +350,7 @@ bool replicast; // simulation is currently in replicast mode
 static void simulate (bool do_replicast)
 {
     const event_t *e;
-
+    unsigned objects_left = config.tracked_object_puts;
     unsigned delta;
     unsigned put_seed = config.seed;
     
@@ -372,16 +372,20 @@ static void simulate (bool do_replicast)
          e = (const event_t *)ehead.tllist.next)
     {
         if (next_object_put_event < e->tllist.time) {
-            insert_next_put(next_object_put_event);
-            e = (const event_t *)ehead.tllist.next;
-            assert (e != &ehead);
-            assert (e->type != NULL_EVENT);
+            if ((config.cluster_utilization == 0  &&  objects_left) ||
+                config.cluster_utilization > 0)
+            {
+                --objects_left;
+                insert_next_put(next_object_put_event);
+                e = (const event_t *)ehead.tllist.next;
+                assert (e != &ehead);
+                assert (e->type != NULL_EVENT);
             
-            delta = rand_r(&put_seed)%(2*derived.ticks_per_object) + 1;
-            next_object_put_event += delta;
+                delta = rand_r(&put_seed)%(2*derived.ticks_per_object) + 1;
+                next_object_put_event += delta;
+            }
         }
-        assert(e->sig == 0x1234);
-        assert (e != &ehead);
+        if (e == &ehead) break;
         assert (e->type != NULL_EVENT);
         if (log_f) log_event(log_f,e);
         process_event(e);
@@ -397,16 +401,19 @@ static void simulate (bool do_replicast)
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
     }
-    (void)now;
 }
 
-#define UDP_SIZE_BYTES 9000
-#define UDP_OVERHEAD_BYTES 60
-// FIXME: refine above
+#define ETH_SIZE_BYTES 9000
+#define MINIMUM_UDPV6_BYTES 66
+#define UDP_SIZE_BYTES (ETH_SIZE_BYTES-MINIMUM_UDPV6_BYTES)
+#define MINIMUM_TCPV6_BYTES 74
+#define TCP_SIZE_BYTES (ETH_SIZE_BYTES-MINIMUM_TCPV6_BYTES)
+
 
 static void derive_config (void)
 {
     unsigned chunk_udp_packets;
+    unsigned chunk_tcp_packets;
     tick_t   j;
     
     derived.n_targets = config.n_negotiating_groups * config.n_targets_per_ng;
@@ -415,14 +422,22 @@ static void derive_config (void)
         divup(derived.n_tracked_puts * config.chunk_size,1024L*1024L);
     derived.disk_kb_write_time =
         (unsigned)((TICKS_PER_SECOND/1024L)/config.mbs_sec_per_target_drive);
-    chunk_udp_packets = (config.chunk_size + UDP_SIZE_BYTES - 1)/UDP_SIZE_BYTES;
-    derived.chunk_xmit_duration =
-        (config.chunk_size+UDP_OVERHEAD_BYTES*chunk_udp_packets)*8L;
+    chunk_udp_packets = divup(config.chunk_size,UDP_SIZE_BYTES);
+    derived.chunk_udp_xmit_duration =
+        (config.chunk_size+MINIMUM_UDPV6_BYTES*chunk_udp_packets)*8L;
+    chunk_tcp_packets = divup(config.chunk_size,TCP_SIZE_BYTES);
+    derived.chunk_tcp_xmit_duration =
+        (config.chunk_size+MINIMUM_TCPV6_BYTES*chunk_tcp_packets)*8L;
+    
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
-    j = derived.chunk_disk_write_duration * config.n_replicas;
-    j = divup(j*config.chunks_per_object,derived.n_targets);
-    derived.ticks_per_object = divup(j*100L,config.cluster_utilization);
+    if (!config.cluster_utilization)
+        derived.ticks_per_object = 1;
+    else {
+        j = derived.chunk_disk_write_duration * config.n_replicas;
+        j = divup(j*config.chunks_per_object,derived.n_targets);
+        derived.ticks_per_object = divup(j*100L,config.cluster_utilization);
+    }
     //
     // The following derived fields are never actually used, but they were
     // useful for sanity checking the overall calculations.
@@ -476,6 +491,8 @@ static void usage (const char *progname) {
     fprintf(stderr," [objects <#>],");
     fprintf(stderr," [mbs_sec <#>,");
     fprintf(stderr," [cluster_trip_time <ticks>\n");
+
+    fprintf(stderr,"\n\nutilization 0 will produce chunks as quickly as possible.\n");
     
     exit(1);
 }
