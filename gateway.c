@@ -186,6 +186,7 @@ void handle_object_put_ready (const event_t *e)
     cp->sig = 0xABCD;
 
     cp->seqnum = ++n_chunkputs;
+    ++track.n_initiated;
     cp->started = e->tllist.time;
     cp->remaining_chunks = opr->n_chunks - 1;
     cp->replicas_unacked = config.n_replicas;
@@ -211,6 +212,7 @@ static void put_next_chunk_request (const chunkput_t *prior_chunk,tick_t now)
  
     cp->sig = 0xABCD;
     cp->seqnum = ++n_chunkputs;
+    ++track.n_initiated;
     cp->started = cpr.event.create_time = now;
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
@@ -331,28 +333,7 @@ static bool acceptable_bid_set (const bid_t *bids,
     return window_lim >= *lim;
 }
 
-
-#define MAX_QDEPTH 10
-#define MAX_WRITE_QDEPTH 64
-typedef struct trackers {
-    tick_t min_duration;
-    tick_t max_duration;
-    tick_t total_duration;
-    unsigned long n_completions;
-    unsigned qdepth_tally[MAX_QDEPTH+1];
-    unsigned max_qdepth;
-    unsigned n_qdepth_tally;
-    unsigned long qdepth_total;
-    unsigned write_qdepth_tally [MAX_WRITE_QDEPTH+1];
-    unsigned max_write_qdepth;
-    unsigned n_write_qdepth_tally;
-    unsigned long write_dqepth_total;
-    unsigned mbz;
-} trackers_t;
-
-static trackers_t track = {.min_duration = ~0L};
-
-static  void select_targets (chunk_put_handle_t cp,
+static  void select_replicast_targets (chunk_put_handle_t cp,
                              unsigned nbids,
                              bid_t *bids,
                              unsigned *accepted_target)
@@ -424,6 +405,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     rep_chunk_put_accept_t accept_event;
     rep_rendezvous_xfer_received_t rendezvous_xfer_event;
     chunkput_t *p = (chunkput_t *)cpr->cp;
+    tick_t next_chunk_time;
     
     assert(p);
     assert(!p->mbz);
@@ -444,7 +426,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     memset(&accept_event.accepted_target[0],0,
            sizeof accept_event.accepted_target);
     
-    select_targets (cpr->cp,p->u.replicast.nbids,p->u.replicast.bids,
+    select_replicast_targets (cpr->cp,p->u.replicast.nbids,p->u.replicast.bids,
                     accept_event.accepted_target);
     accept_event.window_start = p->u.replicast.bids[0].start;
     accept_event.window_lim = p->u.replicast.bids[0].lim;
@@ -470,8 +452,11 @@ void handle_rep_chunk_put_response_received (const event_t *e)
             insert_event(rendezvous_xfer_event);
         }
     }
-    if (p->remaining_chunks)
-        put_next_chunk_request(p,rendezvous_xfer_event.event.tllist.time);
+    if (p->remaining_chunks) {
+        next_chunk_time = rendezvous_xfer_event.event.tllist.time;
+        // adjust earlier by fastest negotiation time possible
+        put_next_chunk_request(p,next_chunk_time);
+    }
 }
 
 static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
@@ -491,9 +476,6 @@ static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
             return;
         }
     }
-    fprintf(log_f,"WARNING,target,%d,not found for CP,0x%p,%d\n",
-            target_num,c,c->seqnum);
-    assert(false);
 }
 
 void handle_tcp_reception_ack (const event_t *e)
@@ -505,15 +487,18 @@ void handle_tcp_reception_ack (const event_t *e)
 {
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     chunkput_t *c = (chunkput_t *)tra->cp;
+    tick_t next_tcp_time;
  
     remove_tcp_reception_target(c,tra->target_num);
     
     if (tra->max_ongoing_rx > c->u.nonrep.max_ongoing_rx)
         c->u.nonrep.max_ongoing_rx  = tra->max_ongoing_rx;
+    next_tcp_time = e->tllist.time;
+    // adjust so that connection setup overlaps with delivery
     if (++c->u.nonrep.acked < config.n_replicas)
-        next_tcp_xmit(c,e->tllist.time);
+        next_tcp_xmit(c,next_tcp_time);
     else if (c->remaining_chunks)
-        put_next_chunk_request (c,e->tllist.time);
+        put_next_chunk_request (c,next_tcp_time);
 }
 
 void handle_replica_put_ack (const event_t *e)
@@ -556,6 +541,7 @@ bool handle_chunk_put_ack (const event_t *e)
     chunkput_t *cp;
     tick_t duration;
     bool was_tracked;
+    unsigned long n_pending;
     char *tag = replicast ? "replicast" : "non";
     
     assert(e);
@@ -574,6 +560,11 @@ bool handle_chunk_put_ack (const event_t *e)
         if (duration > track.max_duration) track.max_duration = duration;
         track.total_duration += duration;
         ++track.n_completions;
+        fprintf(log_f,"chunk_ack:n_completions,%lu,n_initiated,%lu",
+                track.n_completions,track.n_initiated);
+        n_pending = track.n_initiated - track.n_completions;
+        fprintf(log_f,",pending,%lu,per target %04.3f\n",
+                n_pending,((float)n_pending)/derived.n_targets);
 
         if (cp->write_qdepth > MAX_WRITE_QDEPTH)
             cp->write_qdepth = MAX_WRITE_QDEPTH;
@@ -610,8 +601,8 @@ void report_duration_stats (void)
     
     if (track.n_completions) {
         msecs = ((double_t)now)/(10L*1024*1024*1024/1000);
-        printf("n_completions %lu total time %6.3f msecs\n",
-               track.n_completions,msecs);
+        printf("n_initiated %lu n_completions %lu total time %6.3f msecs\n",
+               track.n_initiated,track.n_completions,msecs);
         avg = ((float)track.total_duration)/track.n_completions;
         avg_x = avg/track.min_duration;
         max_x = ((float)track.max_duration)/track.min_duration;

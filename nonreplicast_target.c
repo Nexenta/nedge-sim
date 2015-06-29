@@ -83,11 +83,14 @@ static void credit_ongoing_receptions (
     {
         ort = (ongoing_reception_t *)pnd;
         
-        assert(time_now > ort->credited_thru);
         assert(t->n_ongoing_receptions > 0);
         
-        elapsed_time = time_now - ort->credited_thru;
-        ort->credited_thru = time_now;
+        if (time_now < ort->credited_thru)
+            elapsed_time = 0L;
+        else {
+            elapsed_time = time_now - ort->credited_thru;
+            ort->credited_thru = time_now;
+        }
         credit = divup(elapsed_time,t->n_ongoing_receptions);
         ort->credit += credit;
         if (current_num_receptions > ort->max_ongoing_rx)
@@ -190,9 +193,9 @@ void handle_tcp_reception_complete (const event_t *e)
     const tcp_reception_complete_t *trc = (const tcp_reception_complete_t *)e;
     tcp_reception_ack_t tcp_ack;
     ongoing_reception_t *ort,*ort_next;
-    disk_write_completion_t dwc;
+    disk_write_start_t dws;
     nonrep_target_t *t;
-    tick_t write_start;
+    tick_t write_start,write_completion;
     unsigned n;
 
     assert (e); (void)e;
@@ -207,7 +210,6 @@ void handle_tcp_reception_complete (const event_t *e)
          ort = ort_next,++n)
     {
         if (ort->credit < derived.chunk_udp_xmit_duration) {
-            fprintf(log_f,"Repost,");
             schedule_tcp_reception_complete (trc->target_num,ort->cp);
             break;
         }
@@ -219,20 +221,22 @@ void handle_tcp_reception_complete (const event_t *e)
         tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
         insert_event(tcp_ack);
         
-        dwc.event.create_time = e->tllist.time;
-        write_start = (t->last_disk_write_completion > e->tllist.   time)
+        dws.event.create_time = e->tllist.time;
+        write_start = (t->last_disk_write_completion > e->tllist.time)
             ? t->last_disk_write_completion
             : e->tllist.time;
-        dwc.event.create_time = e->tllist.time;
-        dwc.event.tllist.time = write_start + derived.chunk_disk_write_duration;
-        t->last_disk_write_completion = dwc.event.tllist.time;
-        dwc.event.type = DISK_WRITE_COMPLETION;
-        dwc.cp = trc->cp;
+        write_completion = write_start + derived.chunk_disk_write_duration;
+        
+        dws.event.create_time = e->tllist.time;
+        dws.event.tllist.time = write_start;
+        t->last_disk_write_completion = write_completion;
+        dws.event.type = DISK_WRITE_START;
+        dws.cp = trc->cp;
         assert(chunk_seq(trc->cp));
-        dwc.target_num = trc->target_num;
-        dwc.write_qdepth = t->common.write_qdepth++;
-        dwc.qptr = &t->common.write_qdepth;
-        insert_event(dwc);
+        dws.target_num = trc->target_num;
+        dws.write_qdepth = t->common.write_qdepth++;
+        dws.qptr = &t->common.write_qdepth;
+        insert_event(dws);
         
         ort_next = (ongoing_reception_t *)ort->tllist.next;
         assert(ort_next);

@@ -60,6 +60,8 @@ static event_t ehead = { // The list of events for gateways and targets
     .type = NULL_EVENT
 };
 
+trackers_t track = {.min_duration = ~0L};
+
 static unsigned tllist_len (const tllist_t *head)
 {
     unsigned n;
@@ -192,6 +194,7 @@ static void log_event (FILE *f,const event_t *e)
         const tcp_xmit_received_t *txr;
         const tcp_reception_complete_t *trc;
         const tcp_reception_ack_t *tra;
+        const disk_write_start_t *dws;
         const disk_write_completion_t *dwc;
         const replica_put_ack_t *rpack;
         const chunk_put_ack_t *cpack;
@@ -252,6 +255,14 @@ static void log_event (FILE *f,const event_t *e)
                     e->tllist.time,e->create_time,
                     u.tra->cp,chunk_seq(u.tra->cp),u.tra->target_num);
             break;
+        case DISK_WRITE_START:
+            fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_START,0x%lx,%d,%d",
+                    e->tllist.time,e->create_time,tag,
+                    u.dws->cp,chunk_seq(u.dws->cp),
+                    u.dws->target_num);
+            fprintf(f,",target,%d,qdepth,%d\n",u.dwc->target_num,
+                    u.dwc->write_qdepth);
+            break;
         case DISK_WRITE_COMPLETION:
             fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_COMPLETION,0x%lx,%d,%d",
                     e->tllist.time,e->create_time,tag,
@@ -274,6 +285,10 @@ static void log_event (FILE *f,const event_t *e)
         case NUM_EVENT_TYPES:
             assert(false);
             break;
+        case TRACK_SAMPLE:
+            fprintf(f,"0x%lx,0x%lx,TRACK_SAMPLE\n", e->tllist.time,
+                    e->create_time);
+            break;
     }
 }
 
@@ -294,11 +309,26 @@ tick_t now = 0;
 
 static unsigned n_tracked_completions = 0;
 
+bool replicast; // simulation is currently in replicast mode
+
+#define MSEC_TICKS (TICKS_PER_SECOND/1000L)
+
+static void track_report (void)
+{
+    const char *tag = replicast ? "replicast" : "non";
+    
+    fprintf(log_f,"%s,track@,0x%lx,%lu,%lu,%lu,%lu\n",tag,now,track.n_initiated,
+            track.n_writes_jnitiated,track.n_writes_completed,
+            track.n_completions);
+}
+
 static void process_event (const event_t *e)
 
 // process a single event
 
 {
+    track_sample_t track_it;
+    
     now = e->tllist.time;
     switch (e->type) {
         case OBJECT_PUT_READY:
@@ -328,6 +358,9 @@ static void process_event (const event_t *e)
         case TCP_RECEPTION_ACK:
             handle_tcp_reception_ack(e);
             break;
+        case DISK_WRITE_START:
+            handle_disk_write_start(e);
+            break;
         case DISK_WRITE_COMPLETION:
             handle_disk_write_completion(e);
             break;
@@ -338,6 +371,13 @@ static void process_event (const event_t *e)
             if (handle_chunk_put_ack(e))
                 ++n_tracked_completions;
             break;
+        case TRACK_SAMPLE:
+            track_report();
+            track_it.event.create_time = now;
+            track_it.event.tllist.time = now + 10L*1024L*1024L;
+            track_it.event.type = TRACK_SAMPLE;
+            insert_event(track_it);
+            break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
             assert(false);
@@ -345,19 +385,22 @@ static void process_event (const event_t *e)
     }
 }
 
-bool replicast; // simulation is currently in replicast mode
-
 static void simulate (bool do_replicast)
 {
     const event_t *e;
     unsigned objects_left = config.tracked_object_puts;
     unsigned delta;
     unsigned put_seed = config.seed;
+    track_sample_t track_it;
+    
+    track_it.event.create_time = 0L;
+    track_it.event.tllist.time = 10L*1024L*1024L;
+    track_it.event.type = TRACK_SAMPLE;
+
+    insert_event(track_it);
     
     replicast = do_replicast;
     srand(config.seed+1);
-    
-    assert(!edepth);
 
     tick_t next_object_put_event;
 
@@ -397,7 +440,8 @@ static void simulate (bool do_replicast)
         assert(e->sig == 0x1234);
         assert (e != &ehead);
         assert (e->type != NULL_EVENT);
-        process_event(e);
+        if (e->type != TRACK_SAMPLE)
+            process_event(e);
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
     }

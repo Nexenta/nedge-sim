@@ -268,8 +268,9 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
         (const rep_rendezvous_xfer_received_t *)e;
     rep_target_t *tp = rept + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
-    tick_t write_start;
-    disk_write_completion_t dwc;
+    tick_t write_start,write_complete;
+    disk_write_start_t dws;
+
     
     assert(replicast);
     assert(e);
@@ -282,15 +283,16 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     write_start = (tp->last_disk_write_completion > e->tllist.time)
         ? tp->last_disk_write_completion
         : e->tllist.time;
-    
-    dwc.event.create_time = e->tllist.time;
-    dwc.event.tllist.time = write_start + derived.chunk_disk_write_duration;
-    tp->last_disk_write_completion = dwc.event.tllist.time;
-    dwc.event.type = DISK_WRITE_COMPLETION;
-    dwc.cp = rtr->cp;
-    dwc.target_num = rtr->target_num;
-    dwc.write_qdepth = tp->common.write_qdepth++;
-    dwc.qptr = &tp->common.write_qdepth;
-    insert_event(dwc);
+
+    dws.event.create_time = e->tllist.time;
+    dws.event.tllist.time = write_start;
+    write_complete = write_start + derived.chunk_disk_write_duration;
+    tp->last_disk_write_completion = write_complete;
+    dws.event.type = DISK_WRITE_START;
+    dws.cp = rtr->cp;
+    dws.target_num = rtr->target_num;
+    dws.write_qdepth = tp->common.write_qdepth++;
+    dws.qptr = &tp->common.write_qdepth;
+    insert_event(dws);
 }
 
