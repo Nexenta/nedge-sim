@@ -201,6 +201,8 @@ void handle_tcp_reception_complete (const event_t *e)
     assert (e); (void)e;
     assert(!replicast);
     t = nrt + trc->target_num;
+    tcp_ack.target_num = trc->target_num;
+    dws.target_num = trc->target_num;
     
     assert(t->n_ongoing_receptions);
     credit_ongoing_receptions(t,t->n_ongoing_receptions,e->tllist.time);
@@ -216,8 +218,7 @@ void handle_tcp_reception_complete (const event_t *e)
         tcp_ack.event.create_time = e->tllist.time;
         tcp_ack.event.tllist.time = e->tllist.time + config.cluster_trip_time;
         tcp_ack.event.type = TCP_RECEPTION_ACK;
-        tcp_ack.cp = trc->cp;
-        tcp_ack.target_num = trc->target_num;
+        tcp_ack.cp = ort->cp;
         tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
         insert_event(tcp_ack);
         
@@ -231,9 +232,9 @@ void handle_tcp_reception_complete (const event_t *e)
         dws.event.tllist.time = write_start;
         t->last_disk_write_completion = write_completion;
         dws.event.type = DISK_WRITE_START;
-        dws.cp = trc->cp;
-        assert(chunk_seq(trc->cp));
-        dws.target_num = trc->target_num;
+        dws.cp = ort->cp;
+        assert(chunk_seq(ort->cp));
+
         dws.write_qdepth = t->common.write_qdepth++;
         dws.qptr = &t->common.write_qdepth;
         insert_event(dws);
