@@ -606,6 +606,7 @@ int main(int argc, const char * argv[]) {
     replicast = true;
     init_rep_targets(derived.n_targets);
     simulate(true);
+    report_rep_chunk_distribution();
     release_rep_targets();
 
     printf("\n\nSimulating Non-replicast\n");
@@ -616,6 +617,7 @@ int main(int argc, const char * argv[]) {
     replicast = false;
     init_nonrep_targets(derived.n_targets);
     simulate(false);
+    report_nonrep_chunk_distribution();
     release_nonrep_targets();
 
     fclose(log_f);

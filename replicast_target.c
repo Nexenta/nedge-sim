@@ -16,6 +16,7 @@ typedef struct rep_target_t {       // Track replicast target
     unsigned ir_queue_depth;        // # of inbound reservations
     tick_t last_disk_write_completion;  // last disk write completion for
                                         // this target
+    unsigned chunks_put;       // total number of chunks put to this target
     unsigned mbz;   // debugging paranoia
 } rep_target_t;
 //
@@ -242,6 +243,7 @@ void handle_rep_chunk_put_accept_received (const event_t *e)
         ir->tllist.time = cpa->window_start;
         ir->lim = cpa->window_lim;
         ir->accepted = true;
+        ++tp->chunks_put;
     }
     else {
         ir_remove (tp,ir);
@@ -294,5 +296,33 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     dws.write_qdepth = tp->common.write_qdepth++;
     dws.qptr = &tp->common.write_qdepth;
     insert_event(dws);
+}
+
+#define MAX_TALLY 2048
+void report_rep_chunk_distribution (void)
+
+// Report distribution of chunks to targets to log_f
+
+{
+    unsigned tally [MAX_TALLY];
+    const rep_target_t *tp;
+    const rep_target_t *tp_lim;
+    unsigned n,max_n;
+    
+    memset(tally,0,sizeof tally);
+    for (tp =  rept, tp_lim = rept + derived.n_targets, max_n = 0;
+         tp != tp_lim;
+         ++tp)
+    {
+        n = tp->chunks_put;
+        if (n >= MAX_TALLY) n = MAX_TALLY-1;
+        ++tally[n];
+        if (n > max_n) max_n = n;
+    }
+    fprintf(log_f,"Chunks per target distribution:\n");
+    for (n = 0;;++n) {
+        fprintf(log_f,"%d --> %d\n",n,tally[n]);
+        if (n == max_n) break;
+    }
 }
 

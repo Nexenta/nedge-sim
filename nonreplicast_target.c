@@ -25,6 +25,7 @@ typedef struct nonrep_target_t {
     ongoing_reception_t orhead;     // tllist head of ongoing TCP receptions
     tick_t last_disk_write_completion;  // last disk write completion for
                                         // this target
+    unsigned chunks_put;
     unsigned mbz;   // debugging paranoia
 } nonrep_target_t;
 //
@@ -152,6 +153,7 @@ void handle_tcp_xmit_received (const event_t *e)
     assert (e);
     assert(!replicast);
     t = nrt + txr->target_num;
+    ++t->chunks_put;
 
     fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
             e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
@@ -246,5 +248,33 @@ void handle_tcp_reception_complete (const event_t *e)
         memset(ort,0xFD,sizeof *ort);
         free(ort);
         --t->n_ongoing_receptions;
+    }
+}
+
+#define MAX_TALLY 2048
+void report_nonrep_chunk_distribution (void)
+
+// Report distribution of chunks to targets to log_f
+
+{
+    unsigned tally [MAX_TALLY];
+    const nonrep_target_t *tp;
+    const nonrep_target_t *tp_lim;
+    unsigned n,max_n;
+    
+    memset(tally,0,sizeof tally);
+    for (tp =  nrt, tp_lim = nrt + derived.n_targets, max_n = 0;
+         tp != tp_lim;
+         ++tp)
+    {
+        n = tp->chunks_put;
+        if (n >= MAX_TALLY) n = MAX_TALLY-1;
+        ++tally[n];
+        if (n > max_n) max_n = n;
+    }
+    fprintf(log_f,"Non-replicast Chunks per target distribution:\n");
+    for (n = 0;;++n) {
+        fprintf(log_f,"%d --> %d\n",n,tally[n]);
+        if (n == max_n) break;
     }
 }
