@@ -27,6 +27,7 @@
 typedef struct bid {
     tick_t  start;
     tick_t  lim;
+    tick_t  estimated_ack;
     unsigned target_num;
     unsigned queue_depth;
 } bid_t;
@@ -287,6 +288,7 @@ static void save_bid (bid_t *bids,
     b = bids + *nbids;
     b->start = cpr->bid_start;
     b->lim = cpr->bid_lim;
+    b->estimated_ack = cpr->estimated_ack;
     b->target_num = cpr->target_num;
     b->queue_depth = cpr->qdepth;
     ++*nbids;
@@ -353,10 +355,12 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
     assert (nbids <= config.n_targets_per_ng);
     
     qsort(bids,nbids,sizeof(bid_t),bid_compare);
-    for (n = 0; n != nbids; ++n)
-        fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Target:%d\n",
+    for (n = 0; n != nbids; ++n) {
+        fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Target:%d",
                 c->seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
                 bids[n].target_num);
+        fprintf(bid_f,",EstAck,0x%lx\n",bids[n].estimated_ack);
+    }
     for (n = 0; n + config.n_replicas <= nbids; ++n) {
         if (acceptable_bid_set(bids+n,&start,&lim)) {
             bids[0].start = start;

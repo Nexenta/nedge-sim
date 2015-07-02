@@ -56,21 +56,17 @@ static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
                       tick_t *start,
                       tick_t *lim,
+                      tick_t *ack_at,
                       unsigned *qdepth)
 
 // Make a bid to receive 'chunk_num' on 'target_num' later than 'now' lasting
 // at least 'duration'. Record this bid as a new inbound_reservation for the
 // target and in *start and *lim
 //
+// Also record an estimate for when this replica would be acked (post write)
+//
 // duration should already be padded to allow the Gateway to match varying bids
 //
-// TODO: also calculate a "jit_start" which is the earliest time when the
-// rendezvous transfer would be able to proceed directly to disk. That is,
-// this is the latest rendezvous transfer time that will still return the
-// earlie chunk ack at least from this Target.
-//
-// the gateway will adjust the window based on the jit_start and/or break
-// ties in favor of earlier jit_starts.
 
 {
     inbound_reservation_t *ir =
@@ -79,8 +75,11 @@ static void make_bid (unsigned target_num,
     inbound_reservation_t *insert_after;
     rep_target_t *tp = rept + target_num;
     tick_t s;
+    tick_t estimated_write_start;
 
     assert(start);
+    assert(lim);
+    assert(ack_at);
     assert(ir);
     assert(target_num < derived.n_targets);
     assert(replicast);
@@ -109,6 +108,12 @@ static void make_bid (unsigned target_num,
         *start = p->lim + 1;
         *lim = *start + derived.chunk_udp_xmit_duration*2;
     }
+    estimated_write_start = *lim;
+    if (tp->last_disk_write_completion > estimated_write_start)
+        estimated_write_start = tp->last_disk_write_completion;
+    *ack_at = estimated_write_start + config.cluster_trip_time +
+        derived.chunk_disk_write_duration;
+    
     ir->tllist.time = *start;
     ir->lim = *lim;
     ir->cp = cp;
@@ -143,8 +148,8 @@ void handle_rep_chunk_put_request_received (const event_t *e)
     cpresp.event.type = REP_CHUNK_PUT_RESPONSE_RECEIVED;
     cpresp.cp = cpr->cp;
     cpresp.target_num = cpr->target_num;
-    make_bid(cpresp.target_num,cpresp.cp,
-             &cpresp.bid_start,&cpresp.bid_lim,&cpresp.qdepth);
+    make_bid(cpresp.target_num,cpresp.cp,&cpresp.bid_start,&cpresp.bid_lim,
+             &cpresp.estimated_ack,&cpresp.qdepth);
     insert_event(cpresp);
 }
 

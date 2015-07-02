@@ -145,6 +145,8 @@ typedef struct rep_chunk_put_response_received {
     unsigned target_num;    // Target that generated this response
     tick_t  bid_start;      // The start of the bid window from this target
     tick_t  bid_lim;        // End of the bid window from this target
+    tick_t  estimated_ack;  // When is the estimated ack for this transfer
+                            // This estimates the write delay and duration
     unsigned qdepth;        // depth of target's inbound reservation queue
 } rep_chunk_put_response_received_t;
 //
