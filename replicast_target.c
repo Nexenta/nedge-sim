@@ -14,6 +14,7 @@ typedef struct rep_target_t {       // Track replicast target
     target_t    common;             // common fields
     inbound_reservation_t ir_head;  // tllist of inbound reservations
     unsigned ir_queue_depth;        // # of inbound reservations
+    unsigned write_queue_depth;     // depth of write queue for this target
     tick_t last_disk_write_completion;  // last disk write completion for
                                         // this target
     unsigned chunks_put;       // total number of chunks put to this target
@@ -293,7 +294,8 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     dws.event.type = DISK_WRITE_START;
     dws.cp = rtr->cp;
     dws.target_num = rtr->target_num;
-    dws.write_qdepth = tp->common.write_qdepth++;
+    if ((dws.write_qdepth = tp->common.write_qdepth++) == 0)
+        ++track.n_active_targets;
     dws.qptr = &tp->common.write_qdepth;
     insert_event(dws);
 }

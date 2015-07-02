@@ -51,7 +51,8 @@ void handle_disk_write_completion (const event_t *e)
             new_event.cp,chunk_seq(new_event.cp),dwc->target_num,*dwc->qptr);
     fprintf(log_f,".write_q_depth,%d\n",dwc->write_qdepth);
     
-    --*dwc->qptr;
+    if (--*dwc->qptr == 0)
+        --track.n_active_targets;
     
     new_event.target_num = dwc->target_num;
     assert(dwc->target_num < derived.n_targets);

@@ -237,7 +237,8 @@ void handle_tcp_reception_complete (const event_t *e)
         dws.cp = ort->cp;
         assert(chunk_seq(ort->cp));
 
-        dws.write_qdepth = t->common.write_qdepth++;
+        if ((dws.write_qdepth = t->common.write_qdepth++) == 0)
+            ++track.n_active_targets;
         dws.qptr = &t->common.write_qdepth;
         insert_event(dws);
         

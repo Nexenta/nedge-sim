@@ -40,6 +40,8 @@ typedef struct sim_config {
                                     // speed potential. Expect spikes in latency
                                     // for consistent hashing when this exceeds
                                     // 50%
+    bool do_replicast;              // Test replicast
+    bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
 } sim_config_t;
 

@@ -317,9 +317,9 @@ static void track_report (void)
 {
     const char *tag = replicast ? "replicast" : "non";
     
-    fprintf(log_f,"%s,track@,0x%lx,%lu,%lu,%lu,%lu\n",tag,now,track.n_initiated,
-            track.n_writes_jnitiated,track.n_writes_completed,
-            track.n_completions);
+    fprintf(log_f,"%s,track@,0x%lx,%lu,%lu,%lu,%lu,active-targets,%u\n",tag,now,
+            track.n_initiated,track.n_writes_jnitiated,track.n_writes_completed,
+            track.n_completions,track.n_active_targets);
 }
 
 static void process_event (const event_t *e)
@@ -527,22 +527,29 @@ FILE *bid_f;
 
 static void usage (const char *progname) {
     fprintf(stderr,"Usage: %s",progname);
+    fprintf(stderr," [rep|ch]");
     fprintf(stderr," [ngs <#>]");
     fprintf(stderr," [targets_per <#>]");
-    fprintf(stderr," [chunk_size <kbytes>]");
+    fprintf(stderr," [chunk_size <kbytes>]\n");
     fprintf(stderr," [utilization <percent>]");
     fprintf(stderr," [chunks_per_object <#>]");
     fprintf(stderr," [objects <#>],");
     fprintf(stderr," [mbs_sec <#>,");
     fprintf(stderr," [cluster_trip_time <ticks>\n");
 
-    fprintf(stderr,"\n\nutilization 0 will produce chunks as quickly as possible.\n");
+    fprintf(stderr,"\nrep does replicast only.\n");
+    fprintf(stderr,"ch does consistent hash only.\n");
+    fprintf(stderr,"Default is to do both\n");
+    fprintf(stderr,"\nutilization 0 will produce chunks quickly.\n");
+    fprintf(stderr,"Simulates chunks coming from one gateway per object.\n");
     
     exit(1);
 }
 
 static void log_config (FILE *f)
 {
+    fprintf(f,"config.do_replicast:%d\n",config.do_replicast);
+    fprintf(f,"config.do_ch:%d\n",config.do_ch);
     fprintf(f,"config.cluster_Trip_time:%d\n",config.cluster_trip_time);
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
     fprintf(f,"config.chunks_per_object:%d\n",config.chunks_per_object);
@@ -553,7 +560,7 @@ static void log_config (FILE *f)
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
     fprintf(f,"config.seed:%d\n",config.seed);
-    fprintf(f,"config.tracked_object_puts:%d",config.tracked_object_puts);    
+    fprintf(f,"config.tracked_object_puts:%d",config.tracked_object_puts);
 }
 
 static void customize_config (int argc, const char ** argv)
@@ -564,6 +571,8 @@ static void customize_config (int argc, const char ** argv)
     if (!debug && argc <= 2) {
         usage(argv0);
     }
+    config.do_replicast = config.do_ch = true;
+    
     for (--argc,++argv;argc >= 2;argv+=2,argc-=2) {
         if (0 == strcmp(*argv,"ngs"))
             config.n_negotiating_groups = atoi(argv[1]);
@@ -583,6 +592,14 @@ static void customize_config (int argc, const char ** argv)
             config.mbs_sec_per_target_drive = atoi(argv[1]);
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"rep")) {
+            config.do_replicast = true;
+            config.do_ch = false;
+        }
+        else if (0 == strcmp(*argv,"ch")) {
+            config.do_replicast = false;
+            config.do_ch = true;
+        }
         else
             usage(argv0);
     }
@@ -597,29 +614,31 @@ int main(int argc, const char * argv[]) {
     log_f = open_outf("log");
     bid_f = open_outf("bid");
 
-    printf("\n\nSimulating Replicast\n");
-    fprintf(log_f,"Simulating Replicast\n");
-    fprintf(bid_f,"Simulating Replicast\n");
+    if (config.do_replicast) {
+        printf("\n\nSimulating Replicast\n");
+        fprintf(log_f,"Simulating Replicast\n");
+        fprintf(bid_f,"Simulating Replicast\n");
 
-    log_config(log_f);
+        log_config(log_f);
     
-    replicast = true;
-    init_rep_targets(derived.n_targets);
-    simulate(true);
-    report_rep_chunk_distribution();
-    release_rep_targets();
+        replicast = true;
+        init_rep_targets(derived.n_targets);
+        simulate(true);
+        report_rep_chunk_distribution();
+        release_rep_targets();
+    }
+    if (config.do_ch) {
+        printf("\n\nSimulating Non-replicast\n");
+        fprintf(log_f,"Simulating Non-replicast\n");
+        fprintf(bid_f,"Simulating Non-replicast\n");
 
-    printf("\n\nSimulating Non-replicast\n");
-    fprintf(log_f,"Simulating Non-replicast\n");
-    fprintf(bid_f,"Simulating Non-replicast\n");
-
-    init_seqnum();
-    replicast = false;
-    init_nonrep_targets(derived.n_targets);
-    simulate(false);
-    report_nonrep_chunk_distribution();
-    release_nonrep_targets();
-
+        init_seqnum();
+        replicast = false;
+        init_nonrep_targets(derived.n_targets);
+        simulate(false);
+        report_nonrep_chunk_distribution();
+        release_nonrep_targets();
+    }
     fclose(log_f);
     fclose(bid_f);
     exit(0);
