@@ -534,9 +534,11 @@ static void usage (const char *progname) {
     fprintf(stderr," [utilization <percent>]");
     fprintf(stderr," [chunks_per_object <#>]");
     fprintf(stderr," [objects <#>],");
-    fprintf(stderr," [mbs_sec <#>,");
+    fprintf(stderr," [mbs_sec <#>");
+    fprintf(stderr," penaltiy <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>\n");
 
+    fprintf(stderr,"\nPenalty is assessed per chunk for Replicast overhead.\n");
     fprintf(stderr,"\nrep does replicast only.\n");
     fprintf(stderr,"ch does consistent hash only.\n");
     fprintf(stderr,"Default is to do both\n");
@@ -560,7 +562,9 @@ static void log_config (FILE *f)
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
     fprintf(f,"config.seed:%d\n",config.seed);
-    fprintf(f,"config.tracked_object_puts:%d",config.tracked_object_puts);
+    fprintf(f,"config.tracked_object_puts:%d\n",config.tracked_object_puts);
+    fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
+            config.replicast_packet_processing_penalty);
 }
 
 static void customize_config (int argc, const char ** argv)
@@ -595,11 +599,15 @@ static void customize_config (int argc, const char ** argv)
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;
+            --argv,--argc;
         }
         else if (0 == strcmp(*argv,"ch")) {
             config.do_replicast = false;
             config.do_ch = true;
+            --argv,--argc;
         }
+        else if (0 == strcmp(*argv,"penalty"))
+            config.replicast_packet_processing_penalty = atoi(argv[1]);
         else
             usage(argv0);
     }

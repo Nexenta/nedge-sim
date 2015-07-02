@@ -15,6 +15,8 @@
 typedef struct sim_config {
     unsigned cluster_trip_time;         // # of bit-times to send zero-length
                                         // ethernet frame end-to-end.
+    unsigned replicast_packet_processing_penalty; // extra time to penalize
+                                        // replicast for each packet processed.
     unsigned n_negotiating_groups;      // # of negotiating groups
     unsigned n_replicas;                // # of replicas per chunk, usually 3
     unsigned n_targets_per_ng;          // How many targets in each Negotiating

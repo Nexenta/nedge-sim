@@ -85,7 +85,8 @@ static void make_bid (unsigned target_num,
     assert(replicast);
     
     // make initial guess
-    *start = s = now + 2*config.cluster_trip_time;
+    *start = s = now + 2*config.cluster_trip_time +
+        config.replicast_packet_processing_penalty;;
     *lim = s + derived.chunk_udp_xmit_duration*3;
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next;
@@ -144,7 +145,8 @@ void handle_rep_chunk_put_request_received (const event_t *e)
     assert(replicast);
     
     cpresp.event.create_time = e->tllist.time;
-    cpresp.event.tllist.time = e->tllist.time + config.cluster_trip_time;
+    cpresp.event.tllist.time = e->tllist.time + config.cluster_trip_time +
+                                config.replicast_packet_processing_penalty;
     cpresp.event.type = REP_CHUNK_PUT_RESPONSE_RECEIVED;
     cpresp.cp = cpr->cp;
     cpresp.target_num = cpr->target_num;

@@ -473,7 +473,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
 
     rendezvous_xfer_event.event.create_time = accept_event.event.create_time;
     rendezvous_xfer_event.event.tllist.time = accept_event.window_lim;
-    assert(accept_event.window_lim > accept_event.event.create_time);
+
     rendezvous_xfer_event.event.type = REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
     
