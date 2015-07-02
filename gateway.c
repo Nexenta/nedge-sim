@@ -335,6 +335,41 @@ static bool acceptable_bid_set (const bid_t *bids,
     return window_lim >= *lim;
 }
 
+static bool in_accepted_list(unsigned t,unsigned *accepted)
+{
+    unsigned n;
+    
+    for (n = 0; n!= config.n_replicas; ++n) {
+        if (accepted[n] == t)
+            return true;
+    }
+    return false;
+}
+
+static  void scan_for_better_targets (unsigned nbids,
+                                       bid_t *bids,
+                                       unsigned *accepted_target)
+{
+    unsigned n;
+    tick_t best_estimated_ack;
+    tick_t best_unaccepted_ack;
+    tick_t *compare;
+    
+    best_unaccepted_ack = best_estimated_ack = ~0L;
+    for (n = 0; n < nbids; ++n) {
+        compare = in_accepted_list(bids[n].target_num,accepted_target)
+            ? &best_estimated_ack
+            : &best_unaccepted_ack;
+        if (best_estimated_ack < *compare)
+            *compare = bids[n].estimated_ack;
+    }
+    if (best_unaccepted_ack < best_estimated_ack)
+        fprintf(bid_f,"Best write ack not selected\n");
+}
+
+// determine latest estimated-ack in accepted set
+// scan entire set to see if there is a better estimated_ack
+// for now just note it in bid_f
 static  void select_replicast_targets (chunk_put_handle_t cp,
                              unsigned nbids,
                              bid_t *bids,
@@ -379,6 +414,7 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
             ++track.n_qdepth_tally;
             track.qdepth_total += max_qdepth;
             if (max_qdepth > track.max_qdepth) track.max_qdepth = max_qdepth;
+            scan_for_better_targets(nbids,bids,accepted_target);
             return;
         }
     }
