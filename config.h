@@ -30,18 +30,10 @@ typedef struct sim_config {
     unsigned chunk_size;            // size of each chunk.
                                     // Actual size is variable.
                                     // Recommend simulation values: 4K,64K,1M
-    unsigned chunks_per_object;     // # of chunks per object
-    unsigned tracked_object_puts;   // # of tracked object puts to perform
-                                    // simulation concludes when these puts
-                                    // have completed. Untracked object puts
-                                    // will still be generated at same rate
-                                    // to keep the pipeline running uniformly
-    unsigned cluster_utilization;   // Object creation rate will be set to
-                                    // make aggregate disk writes equal to
-                                    // this percent of the raw disk write
-                                    // speed potential. Expect spikes in latency
-                                    // for consistent hashing when this exceeds
-                                    // 50%
+    unsigned long sim_duration;     // Simulation duration in network bit-ticks.
+    unsigned n_gateways;            // # of gateways producing chunks
+    unsigned per_gateway_limit;     // limit on # of unacknowledged chunks
+                                    // per gateway
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
@@ -53,13 +45,13 @@ extern sim_config_t config;
 
 #define CLUSTER_TRIP_TIME       3500    // aprox 350 nanoseconds
 #define N_NEGOTIATING_GROUPS 256
-#define N_TARGETS_PER_NG 6
+#define N_TARGETS_PER_NG 9
 #define MBS_SEC_PER_TARGET_DRIVE 500
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
-#define CHUNKS_PER_OBJECT 10
-#define TRACKED_OBJECT_PUTS 1000
-#define CLUSTER_UTILIZATION 80
+#define N_GATEWAYS 9
+#define PER_GATEWAY_LIMIT 50
+#define PENALTY 1000
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.
@@ -69,10 +61,6 @@ typedef struct sim_derived_config {
     tick_t chunk_udp_xmit_duration;     // How long to UDP send a chunk?
     tick_t chunk_tcp_xmit_duration;     // How long to TCP send a chunk?
     tick_t chunk_disk_write_duration;   // How long to write a chunk to disk?
-    tick_t ticks_per_object;        // average # of ticks between object puts
-    unsigned objects_per_second;    // # of object puts per second
-    unsigned objects_per_second_per_target; // per target
-    unsigned mbs_per_second_per_target; 
 } sim_derived_config_t;
 
 extern sim_derived_config_t derived;

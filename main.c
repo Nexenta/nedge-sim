@@ -40,9 +40,9 @@ sim_config_t config = {
     .mbs_sec_per_target_drive = MBS_SEC_PER_TARGET_DRIVE,
     .n_replicas = N_REPLICAS,
     .chunk_size = CHUNK_SIZE,
-    .chunks_per_object = CHUNKS_PER_OBJECT,
-    .tracked_object_puts = TRACKED_OBJECT_PUTS,
-    .cluster_utilization = CLUSTER_UTILIZATION,
+    .n_gateways = N_GATEWAYS,
+    .per_gateway_limit=PER_GATEWAY_LIMIT,
+    .sim_duration = 1024L*1024L*1024L,
     .seed = 0x12345678
 };
 
@@ -59,6 +59,8 @@ static event_t ehead = { // The list of events for gateways and targets
     .create_time = 0,
     .type = NULL_EVENT
 };
+
+gateway_t gateway[MAX_GATEWAYS];
 
 trackers_t track = {.min_duration = ~0L};
 
@@ -185,8 +187,8 @@ static void log_event (FILE *f,const event_t *e)
     const char *tag = replicast ? "rep" : "non";
     union event_ptr_union {
         const event_t *e;
-        const object_put_ready_t *opr;
-        const rep_chunk_put_ready_t   *cpr;
+        const gateway_ready_t *gr;
+        const chunk_put_ready_t   *cpr;
         const rep_chunk_put_request_received_t *cpreq;
         const rep_chunk_put_response_received_t *cpresp;
         const rep_chunk_put_accept_t *cpa;
@@ -202,11 +204,11 @@ static void log_event (FILE *f,const event_t *e)
     
     u.e = e;
     switch (e->type) {
-        case OBJECT_PUT_READY:
-            fprintf(f,"0x%lx,0x%lx,%s OBJECT_PUT_READY,%d\n",
-                    e->tllist.time,e->create_time,tag,u.opr->n_chunks);
+        case GATEWAY_READY:
+            fprintf(f,"0x%lx,0x%lx,%s GATEWAY_READY\n",
+                    e->tllist.time,e->create_time,tag);
             break;
-        case REP_CHUNK_PUT_READY:
+        case CHUNK_PUT_READY:
             fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
                     e->tllist.time,e->create_time,tag,
                     u.cpr->cp,chunk_seq(u.cpr->cp));
@@ -292,22 +294,7 @@ static void log_event (FILE *f,const event_t *e)
     }
 }
 
-static void insert_next_put (tick_t insert_time)
-
-// insert the next object_put_ready event for the current object
-
-{
-    object_put_ready_t new_put;
-    
-    new_put.event.tllist.time = new_put.event.create_time = insert_time;
-    new_put.n_chunks = config.chunks_per_object;
-    new_put.event.type = OBJECT_PUT_READY;
-    insert_event(new_put);
-}
-
 tick_t now = 0;
-
-static unsigned n_tracked_completions = 0;
 
 bool replicast; // simulation is currently in replicast mode
 
@@ -331,10 +318,10 @@ static void process_event (const event_t *e)
     
     now = e->tllist.time;
     switch (e->type) {
-        case OBJECT_PUT_READY:
-            handle_object_put_ready (e);
+        case GATEWAY_READY:
+            handle_gateway_ready (e);
             break;
-        case REP_CHUNK_PUT_READY:
+        case CHUNK_PUT_READY:
             handle_chunk_put_ready (e);
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
@@ -368,8 +355,7 @@ static void process_event (const event_t *e)
             handle_replica_put_ack(e);
             break;
         case CHUNK_PUT_ACK:
-            if (handle_chunk_put_ack(e))
-                ++n_tracked_completions;
+            handle_chunk_put_ack(e);
             break;
         case TRACK_SAMPLE:
             track_report();
@@ -388,10 +374,14 @@ static void process_event (const event_t *e)
 static void simulate (bool do_replicast)
 {
     const event_t *e;
-    unsigned objects_left = config.tracked_object_puts;
-    unsigned delta;
-    unsigned put_seed = config.seed;
     track_sample_t track_it;
+    unsigned i;
+    tick_t first_chunk_time = 0L;
+    
+    gateway[0].credit = config.per_gateway_limit;
+    gateway[0].transmit_done = 0L;
+    gateway[0].cp = (void *)0;
+    memcpy(gateway+1,gateway,(sizeof gateway)-(sizeof gateway[0]));
     
     track_it.event.create_time = 0L;
     track_it.event.tllist.time = 10L*1024L*1024L;
@@ -402,34 +392,19 @@ static void simulate (bool do_replicast)
     replicast = do_replicast;
     srand(config.seed+1);
 
-    tick_t next_object_put_event;
-
-    next_object_put_event = rand_r(&put_seed) % (2*derived.ticks_per_object);
-    
-    printf("\nTotal number of %dKB Chunks: %d.\n",config.chunk_size/1024,
-           derived.n_tracked_puts);
+    printf("\n%d Gateways putting %dKB Chunks.\n",config.n_gateways,
+           config.chunk_size/1024);
     e = (const event_t *)ehead.tllist.next;
     
-    for (n_tracked_completions = 0;
-         n_tracked_completions < derived.n_tracked_puts;
+    for (i = 0; i!= config.n_gateways;++i) {
+        first_chunk_time += (rand() % 1024);
+        insert_next_put(i,first_chunk_time);
+    }
+    
+    for (;
+         now < config.sim_duration;
          e = (const event_t *)ehead.tllist.next)
     {
-        if (next_object_put_event < e->tllist.time) {
-            if ((config.cluster_utilization == 0  &&  objects_left) ||
-                config.cluster_utilization > 0)
-            {
-                --objects_left;
-                insert_next_put(next_object_put_event);
-                e = (const event_t *)ehead.tllist.next;
-                assert (e != &ehead);
-                assert (e->type != NULL_EVENT);
-            
-                delta = rand_r(&put_seed)%(2*derived.ticks_per_object) + 1;
-                next_object_put_event += delta;
-            }
-        }
-        if (e == &ehead) break;
-        assert (e->type != NULL_EVENT);
         if (log_f) log_event(log_f,e);
         process_event(e);
         event_remove((event_t *)e);
@@ -458,10 +433,8 @@ static void derive_config (void)
 {
     unsigned chunk_udp_packets;
     unsigned chunk_tcp_packets;
-    tick_t   j;
     
     derived.n_targets = config.n_negotiating_groups * config.n_targets_per_ng;
-    derived.n_tracked_puts = config.chunks_per_object * config.tracked_object_puts;
     derived.total_write_mbs =
         divup(derived.n_tracked_puts * config.chunk_size,1024L*1024L);
     derived.disk_kb_write_time =
@@ -475,27 +448,6 @@ static void derive_config (void)
     
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
-    if (!config.cluster_utilization)
-        derived.ticks_per_object = 1;
-    else {
-        j = derived.chunk_disk_write_duration * config.n_replicas;
-        j = divup(j*config.chunks_per_object,derived.n_targets);
-        derived.ticks_per_object = divup(j*100L,config.cluster_utilization);
-    }
-    //
-    // The following derived fields are never actually used, but they were
-    // useful for sanity checking the overall calculations.
-    // mbs_per_sec_per_target should be utilization/100 of
-    // config.mbs_per_second_per_target_drive
-    //
-    derived.objects_per_second = (unsigned)
-        divup(TICKS_PER_SECOND,derived.ticks_per_object);
-    derived.objects_per_second_per_target = divup(derived.objects_per_second,
-                                                  derived.n_targets);
-    derived.mbs_per_second_per_target =
-        divup(derived.objects_per_second_per_target*config.chunk_size*
-              config.n_replicas*config.chunks_per_object,
-              1024L*1024L);
 }
 
 static FILE *open_outf (const char *type)
@@ -528,53 +480,48 @@ FILE *bid_f;
 static void usage (const char *progname) {
     fprintf(stderr,"Usage: %s",progname);
     fprintf(stderr," [rep|ch]");
+    fprintf(stderr," [duration <msecs>]");
     fprintf(stderr," [ngs <#>]");
     fprintf(stderr," [targets_per <#>]");
     fprintf(stderr," [chunk_size <kbytes>]\n");
-    fprintf(stderr," [utilization <percent>]");
-    fprintf(stderr," [chunks_per_object <#>]");
-    fprintf(stderr," [objects <#>],");
+    fprintf(stderr," [chunks_per_gateway <#>]");
+    fprintf(stderr," [gateways <#>],");
     fprintf(stderr," [mbs_sec <#>");
-    fprintf(stderr," penaltiy <ticks_per_chunk>");
+    fprintf(stderr," [limit <%%>");
+    fprintf(stderr," penalty <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>\n");
+    fprintf(stderr,"\nOr %s help\n",progname);
+    fprintf(stderr,"    to print this.\n");
 
     fprintf(stderr,"\nPenalty is assessed per chunk for Replicast overhead.\n");
     fprintf(stderr,"\nrep does replicast only.\n");
     fprintf(stderr,"ch does consistent hash only.\n");
     fprintf(stderr,"Default is to do both\n");
-    fprintf(stderr,"\nutilization 0 will produce chunks quickly.\n");
-    fprintf(stderr,"Simulates chunks coming from one gateway per object.\n");
-    
-    exit(1);
 }
 
 static void log_config (FILE *f)
-{
+{ // TODO add missing fields
     fprintf(f,"config.do_replicast:%d\n",config.do_replicast);
     fprintf(f,"config.do_ch:%d\n",config.do_ch);
-    fprintf(f,"config.cluster_Trip_time:%d\n",config.cluster_trip_time);
+    fprintf(f,"config.sim_duration:%lu\n",config.sim_duration);
+    fprintf(f,"config.cluster_trip_time:%d\n",config.cluster_trip_time);
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
-    fprintf(f,"config.chunks_per_object:%d\n",config.chunks_per_object);
-    fprintf(f,"config.cluster_utilization:%d\n",config.cluster_utilization);
     fprintf(f,"config.mbs_sec_per_target_drive:%d\n",
             config.mbs_sec_per_target_drive);
     fprintf(f,"config.n_negotiating_groups:%d\n",config.n_negotiating_groups);
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
+    fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
+    fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
     fprintf(f,"config.seed:%d\n",config.seed);
-    fprintf(f,"config.tracked_object_puts:%d\n",config.tracked_object_puts);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
 }
 
 static void customize_config (int argc, const char ** argv)
-{
+{ // TODO add new fields
     const char *argv0 = argv[0];
-    bool debug = false;
     
-    if (!debug && argc <= 2) {
-        usage(argv0);
-    }
     config.do_replicast = config.do_ch = true;
     
     for (--argc,++argv;argc >= 2;argv+=2,argc-=2) {
@@ -584,12 +531,15 @@ static void customize_config (int argc, const char ** argv)
             config.n_targets_per_ng = atoi(argv[1]);
         else if (0 == strcmp(*argv,"chunk_size"))
             config.chunk_size = atoi(argv[1])*1024;
-        else if (0 == strcmp(*argv,"utilization"))
-            config.cluster_utilization = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"chunks_per_object"))
-            config.chunks_per_object = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"objects"))
-            config.tracked_object_puts = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"gateways")) {
+            config.n_gateways = atoi(argv[1]);
+            if (config.n_gateways > MAX_GATEWAYS) {
+                fprintf(stderr,"Gateways set to max:%d\n",MAX_GATEWAYS);
+                config.n_gateways = MAX_GATEWAYS;
+            }
+        }
+        else if (0 == strcmp(*argv,"duration"))
+            config.sim_duration = atoi(argv[1])*10L*1024L*1024L;
         else if (0 == strcmp(*argv,"seed"))
             config.seed = atoi(argv[1]);
         else if (0 == strcmp(*argv,"mbs_sec"))
@@ -608,8 +558,10 @@ static void customize_config (int argc, const char ** argv)
         }
         else if (0 == strcmp(*argv,"penalty"))
             config.replicast_packet_processing_penalty = atoi(argv[1]);
-        else
+        else {
             usage(argv0);
+            exit(1);
+        }
     }
 }
 
