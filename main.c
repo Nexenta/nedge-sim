@@ -2,11 +2,11 @@
 //  main.c
 //  StorageClusterSim
 //
-//  Created by cait on 5/11/15.
+//  Created by Caitlin Bestler on 7/9/15.
 //  Copyright (c) 2015 Nexenta Systems. All rights reserved.
 //
 
-// List all of the assumptions in this model:
+// List of assumptions made for this model:
 //
 //      No processing time is assessed for unsolicited requests
 //      Emphasis is on measuring network delays for payload transmission
@@ -14,21 +14,32 @@
 //      The network is drop-free for payload transmissions. Neither TCP
 //      or Replicast have to engagein retransmissions.
 //
+//      Class-of-service network features protects storage payload from
+//      other traffic (including unsolicited commands and other TCP traffic).
+//
 //      The network core is non-blocking. The Storage Cluster only has
-//      to deal with or avoid congestion at the Target egress ports.
+//      to deal with or avoid congestion at the Target egress ports. Of course
+//      it "deals with" congestion on in ingress port in that no server can
+//      transmit two ethernet frames at the same time.
 //
 //      All ports are 10 GbE. Having all ports be the same speed is very
 //      beneficial for TCP because a single transmitter will never cause
 //      congestion at the destination.
 //
 //      The delays caused by PAUSE or Priority Pause frames are not modeled.
+//      When other congestion control is working these frames will be used
+//      very rarely.
 //
 //      All chunks are the same size - for modeling simplicity.
 //
+//      Any benefits from deduplication are not being considered. Benefits can
+//      be sustantial for certain workloads, but those benefits should be
+//      identical for both Replicast and Consistent Hashing.
+//
 // The goal of this simulation is to demonstrate the impacts of Target selection
 // and the mostfundamental differences between Replicast and TCP. A separate
-// simulation will detail the impact of Replicast congestion control versus
-// conventional TCP congestion control for storage clusters.
+// simulation is needed to detail the impact of Replicast congestion control
+// versus conventional TCP congestion control for storage clusters.
 //
 
 #include "storage_cluster_sim.h"
@@ -359,10 +370,12 @@ static void process_event (const event_t *e)
             break;
         case TRACK_SAMPLE:
             track_report();
-            track_it.event.create_time = now;
-            track_it.event.tllist.time = now + 10L*1024L*1024L;
-            track_it.event.type = TRACK_SAMPLE;
-            insert_event(track_it);
+            if (now < config.sim_duration) {
+                track_it.event.create_time = now;
+                track_it.event.tllist.time = now + TICKS_PER_SECOND / 1000;
+                track_it.event.type = TRACK_SAMPLE;
+                insert_event(track_it);
+            }
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -378,13 +391,12 @@ static void simulate (bool do_replicast)
     unsigned i;
     tick_t first_chunk_time = 0L;
     
-    gateway[0].credit = config.per_gateway_limit;
-    gateway[0].transmit_done = 0L;
-    gateway[0].cp = (void *)0;
+    gateway[0].credit = (signed)config.per_gateway_limit;
+    gateway[0].pending_cp = (void *)0;
     memcpy(gateway+1,gateway,(sizeof gateway)-(sizeof gateway[0]));
     
-    track_it.event.create_time = 0L;
-    track_it.event.tllist.time = 10L*1024L*1024L;
+    track_it.event.create_time = now = 0L;
+    track_it.event.tllist.time = TICKS_PER_SECOND / 1000;
     track_it.event.type = TRACK_SAMPLE;
 
     insert_event(track_it);
@@ -396,7 +408,7 @@ static void simulate (bool do_replicast)
            config.chunk_size/1024);
     e = (const event_t *)ehead.tllist.next;
     
-    for (i = 0; i!= config.n_gateways;++i) {
+    for (i = 0; i != config.n_gateways; ++i) {
         first_chunk_time += (rand() % 1024);
         insert_next_put(i,first_chunk_time);
     }
@@ -484,10 +496,8 @@ static void usage (const char *progname) {
     fprintf(stderr," [ngs <#>]");
     fprintf(stderr," [targets_per <#>]");
     fprintf(stderr," [chunk_size <kbytes>]\n");
-    fprintf(stderr," [chunks_per_gateway <#>]");
     fprintf(stderr," [gateways <#>],");
     fprintf(stderr," [mbs_sec <#>");
-    fprintf(stderr," [limit <%%>");
     fprintf(stderr," penalty <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>\n");
     fprintf(stderr,"\nOr %s help\n",progname);
@@ -524,6 +534,10 @@ static void customize_config (int argc, const char ** argv)
     
     config.do_replicast = config.do_ch = true;
     
+    if (argc == 2) {
+        usage(argv0);
+        exit(1);
+    }
     for (--argc,++argv;argc >= 2;argv+=2,argc-=2) {
         if (0 == strcmp(*argv,"ngs"))
             config.n_negotiating_groups = atoi(argv[1]);
@@ -539,7 +553,7 @@ static void customize_config (int argc, const char ** argv)
             }
         }
         else if (0 == strcmp(*argv,"duration"))
-            config.sim_duration = atoi(argv[1])*10L*1024L*1024L;
+            config.sim_duration = atoi(argv[1])*TICKS_PER_SECOND/1000;
         else if (0 == strcmp(*argv,"seed"))
             config.seed = atoi(argv[1]);
         else if (0 == strcmp(*argv,"mbs_sec"))
@@ -566,9 +580,6 @@ static void customize_config (int argc, const char ** argv)
 }
 
 int main(int argc, const char * argv[]) {
-
-    
-    // TODO: accept command line customization of config
     customize_config(argc,argv);
     derive_config();
     log_f = open_outf("log");

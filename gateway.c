@@ -1,8 +1,9 @@
+
 //
 //  gateway.c
 //  StorageClusterSim
 //
-//  Created by cait on 5/13/15.
+//  Created by Caitlin Bestler on 7/9/15.
 //  Copyright (c) 2015 Nexenta Systems. All rights reserved.
 //
 
@@ -249,7 +250,6 @@ static void insert_next_chunk_request (const chunkput_t *cp,tick_t time)
 void handle_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpp = (const chunk_put_ready_t *)e;
-    chunk_put_ready_t repost;
     rep_chunk_put_request_received_t new_event;
     chunkput_t *cp = (chunkput_t *)cpp->cp;
     gateway_t *gw = gateway + cp->gateway;
@@ -258,13 +258,12 @@ void handle_chunk_put_ready (const event_t *e)
     assert(!cp->mbz);
     
     if (!gw->credit) {
-        repost = *cpp;
-        repost.event.create_time = repost.event.tllist.time;
-        repost.event.tllist.time += 1000;
-        insert_event(repost);
+        if (now < config.sim_duration  &&  !gw->pending_cp)
+            gw->pending_cp = cp;
     }
     else {
         --gw->credit;
+
         if (replicast) {
             new_event.event.create_time = e->tllist.time;
             new_event.event.tllist.time   = e->tllist.time +
@@ -519,8 +518,8 @@ void handle_rep_chunk_put_response_received (const event_t *e)
         }
     }
     if (!gw->credit) {
-        if (!gw->cp) {
-            gw->cp = next_cp(cp->gateway);
+        if (!gw->pending_cp) {
+            gw->pending_cp = next_cp(cp->gateway);
         }
     }
     else {
@@ -570,19 +569,19 @@ void handle_tcp_reception_ack (const event_t *e)
     if (tra->max_ongoing_rx > cp->u.nonrep.max_ongoing_rx)
         cp->u.nonrep.max_ongoing_rx  = tra->max_ongoing_rx;
     next_tcp_time = e->tllist.time;
-    // adjust so that connection setup overlaps with delivery
-    // insure that next_tcp_time is at least now+1
+    next_tcp_time -= 2*config.cluster_trip_time;
+    if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->u.nonrep.acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
     else if (gw->credit) {
-        --gw->credit;
         if ((new_cp = next_cp(cp->gateway)) != NULL) {
+            --gw->credit;
             select_nonrep_targets(new_cp);
             next_tcp_replica_xmit(new_cp,next_tcp_time);
         }
     }
-    else if (!gw->cp) {
-        gw->cp = next_cp(cp->gateway);
+    else if (!gw->pending_cp) {
+        gw->pending_cp = next_cp(cp->gateway);
     }
 }
 
@@ -673,16 +672,15 @@ void handle_chunk_put_ack (const event_t *e)
     free(cp);
     assert(!track.mbz);
     
-    if ((gw->credit++) == 0) {
-        if ((cp = gw->cp) != (void *)0) {
-            gw->cp = (void *)0;
+    ++gw->credit;
+    if ((cp = gw->pending_cp) != (void *)0) {
+        gw->pending_cp = (void *)0;
 
-            if (replicast)
-                insert_next_chunk_request(cp,now+1);
-            else {
-                select_nonrep_targets(cp);
-                next_tcp_replica_xmit(cp,now+1);
-            }
+        if (replicast)
+            insert_next_chunk_request(cp,now+1);
+        else {
+            select_nonrep_targets(cp);
+            next_tcp_replica_xmit(cp,now+1);
         }
     }
 }

@@ -2,7 +2,7 @@
 //  config.h
 //  StorageClusterSim
 //
-//  Created by cait on 5/21/15.
+//  Created by Caitlin Bestler on 7/9/15.
 //  Copyright (c) 2015 Nexenta Systems. All rights reserved.
 //
 

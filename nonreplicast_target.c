@@ -2,7 +2,7 @@
 //  nonreplicast_target.c
 //  StorageClusterSim
 //
-//  Created by cait on 5/26/15.
+//  Created by Caitlin Bestler on 7/9/15.
 //  Copyright (c) 2015 Nexenta Systems. All rights reserved.
 //
 

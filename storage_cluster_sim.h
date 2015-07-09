@@ -2,7 +2,7 @@
 //  storage_cluster_sim.h
 //  StorageClusterSim
 //
-//  Created by cait on 5/19/15.
+//  Created by Caitlin Bestler on 7/9/15.
 //  Copyright (c) 2015 Nexenta Systems. All rights reserved.
 //
 
@@ -70,11 +70,10 @@ typedef struct event {
 #define MAX_GATEWAYS 1024
 
 typedef struct gateway {
-    unsigned credit;    // how many chunks can this gateway initiate.
+    signed  credit;     // how many chunks can this gateway initiate.
                         // credits are decremented when a chunk is initiated.
                         // credits are replinished when the chunk is acked.
-    tick_t  transmit_done;  // currently estimated transmit completion.
-    void *cp;           // chunkput awaiting gateway credit for this gateway
+    void *pending_cp;   // chunkput awaiting gateway credit for this gateway
 } gateway_t;
 
 extern gateway_t gateway[MAX_GATEWAYS];
