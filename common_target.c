@@ -36,31 +36,31 @@ void handle_disk_write_completion (const event_t *e)
 //
 {
     disk_write_completion_t *dwc = (disk_write_completion_t *)e;
-    replica_put_ack_t new_event;
+    replica_put_ack_t rpa;
     assert(e);
     assert(chunk_seq(dwc->cp));
 
-    new_event.event.create_time = e->tllist.time;
-    new_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
-    new_event.event.type = REPLICA_PUT_ACK;
-    new_event.cp = dwc->cp;
+    rpa.event.create_time = e->tllist.time;
+    rpa.event.tllist.time = e->tllist.time + config.cluster_trip_time;
+    rpa.event.type = REPLICA_PUT_ACK;
+    rpa.cp = dwc->cp;
     assert(dwc->qptr);
     assert(*dwc->qptr);
     
     fprintf(log_f,"DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
-            new_event.cp,chunk_seq(new_event.cp),dwc->target_num,*dwc->qptr);
+            rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
     fprintf(log_f,".write_q_depth,%d\n",dwc->write_qdepth);
     
     if (--*dwc->qptr == 0)
         --track.n_active_targets;
     
-    new_event.target_num = dwc->target_num;
+    rpa.target_num = dwc->target_num;
     assert(dwc->target_num < derived.n_targets);
-    new_event.write_qdepth = dwc->write_qdepth;
+    rpa.write_qdepth = dwc->write_qdepth;
     
     ++track.n_writes_completed;
     
-    insert_event (new_event);
+    insert_event (rpa);
 }
 
 

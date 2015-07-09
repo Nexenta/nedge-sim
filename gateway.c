@@ -247,11 +247,23 @@ static void insert_next_chunk_request (const chunkput_t *cp,tick_t time)
 #define MINIMUM_UDPV6_BYTES 66
 #define CHUNK_PUT_REQUEST_BYTES (MINIMUM_UDPV6_BYTES+200)
 
+#define for_ng(target,ng) \
+    for ((target) = (ng);\
+    (target) < derived.n_targets;\
+    (target) += config.n_negotiating_groups)
+
+//
+// expands to a for loop which will walk 'target_num' thru the set of all
+// targets defined for negotiating group 'ng'
+//
+// The for body must follow this macro
+//
+
 void handle_chunk_put_ready (const event_t *e)
 {
-    const chunk_put_ready_t *cpp = (const chunk_put_ready_t *)e;
-    rep_chunk_put_request_received_t new_event;
-    chunkput_t *cp = (chunkput_t *)cpp->cp;
+    const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
+    rep_chunk_put_request_received_t cprr;
+    chunkput_t *cp = (chunkput_t *)cpr->cp;
     gateway_t *gw = gateway + cp->gateway;
     
     assert (cp);
@@ -265,11 +277,11 @@ void handle_chunk_put_ready (const event_t *e)
         --gw->credit;
 
         if (replicast) {
-            new_event.event.create_time = e->tllist.time;
-            new_event.event.tllist.time   = e->tllist.time +
+            cprr.event.create_time = e->tllist.time;
+            cprr.event.tllist.time   = e->tllist.time +
                 config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
-            new_event.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
-            new_event.cp = (chunk_put_handle_t)cp;
+            cprr.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
+            cprr.cp = (chunk_put_handle_t)cp;
             cp->u.replicast.responses_uncollected = config.n_targets_per_ng;
             
             /* for each Target in randomly selected negotiating group.
@@ -279,12 +291,8 @@ void handle_chunk_put_ready (const event_t *e)
              * of the payload (for payload chunks) or the object name (for metadata)
              */
             cp->u.replicast.ng = rand() % config.n_negotiating_groups;
-            for (new_event.target_num = cp->u.replicast.ng;
-                 new_event.target_num < derived.n_targets;
-                 new_event.target_num += config.n_negotiating_groups)
-            {
-                insert_event(new_event);
-            }
+            for_ng(cprr.target_num,cp->u.replicast.ng)
+                insert_event(cprr);
         }
         else {
             select_nonrep_targets(cp);
@@ -502,9 +510,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     rendezvous_xfer_event.event.type = REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
     
-    for (accept_event.target_num = cp->u.replicast.ng;
-         accept_event.target_num < derived.n_targets;
-         accept_event.target_num += config.n_negotiating_groups)
+    for_ng(accept_event.target_num,cp->u.replicast.ng)
     {
         /* Insert the ACCEPT message for all members of the Negotiating Group
          * Insert the Rendezvous Transfer for the accepted members
@@ -591,27 +597,27 @@ void handle_replica_put_ack (const event_t *e)
 // gateway that originated the transaction.
 {
     replica_put_ack_t *rpa = (replica_put_ack_t *)e;
-    chunkput_t *c = (chunkput_t *)rpa->cp;
-    chunk_put_ack_t put_ack_event;
+    chunkput_t *cp = (chunkput_t *)rpa->cp;
+    chunk_put_ack_t cpa;
 
-    assert(c);
-    assert(!c->mbz);
-    assert(c->sig == 0xABCD);
-    assert(c->seqnum);
+    assert(cp);
+    assert(!cp->mbz);
+    assert(cp->sig == 0xABCD);
+    assert(cp->seqnum);
     assert(rpa->target_num < derived.n_targets);
-    assert(c->replicas_unacked);
-    assert(c->replicas_unacked <= config.n_replicas);
+    assert(cp->replicas_unacked);
+    assert(cp->replicas_unacked <= config.n_replicas);
     
-    if (rpa->write_qdepth > c->write_qdepth)
-        c->write_qdepth = rpa->write_qdepth;
+    if (rpa->write_qdepth > cp->write_qdepth)
+        cp->write_qdepth = rpa->write_qdepth;
     
-    if (!--c->replicas_unacked) {
-        put_ack_event.event.create_time = e->tllist.time;
-        put_ack_event.event.tllist.time = e->tllist.time + 1;
-        put_ack_event.event.type = CHUNK_PUT_ACK;
-        put_ack_event.cp = rpa->cp;
+    if (!--cp->replicas_unacked) {
+        cpa.event.create_time = e->tllist.time;
+        cpa.event.tllist.time = e->tllist.time + 1;
+        cpa.event.type = CHUNK_PUT_ACK;
+        cpa.cp = rpa->cp;
 
-        insert_event(put_ack_event);
+        insert_event(cpa);
     }
 }
 
@@ -742,12 +748,21 @@ void report_duration_stats (void)
     track.min_duration = ~0L;
 }
 
-unsigned chunk_seq (chunk_put_handle_t cp)
+unsigned chunk_seq (chunk_put_handle_t cph)
 {
-    const chunkput_t *p = (const chunkput_t *)cp;
+    const chunkput_t *cp = (const chunkput_t *)cph;
     
-    assert(p->sig == 0xABCD);
-    assert(p->seqnum);
-    return p->seqnum;
+    assert(cp->sig == 0xABCD);
+    assert(cp->seqnum);
+    return cp->seqnum;
+}
+
+unsigned chunk_gateway (chunk_put_handle_t cph)
+{
+    const chunkput_t *cp = (const chunkput_t *)cph;
+    
+    assert(cp->sig == 0xABCD);
+    assert(cp->seqnum);
+    return cp->gateway;
 }
 

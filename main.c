@@ -216,13 +216,13 @@ static void log_event (FILE *f,const event_t *e)
     u.e = e;
     switch (e->type) {
         case GATEWAY_READY:
-            fprintf(f,"0x%lx,0x%lx,%s GATEWAY_READY\n",
-                    e->tllist.time,e->create_time,tag);
+            fprintf(f,"0x%lx,0x%lx,%s GATEWAY_READY,%d\n",
+                    e->tllist.time,e->create_time,tag,u.gr->gateway);
             break;
         case CHUNK_PUT_READY:
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d,gw,%d\n",
                     e->tllist.time,e->create_time,tag,
-                    u.cpr->cp,chunk_seq(u.cpr->cp));
+                    u.cpr->cp,chunk_seq(u.cpr->cp),chunk_gateway(u.cpr->cp));
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
             fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
@@ -290,9 +290,9 @@ static void log_event (FILE *f,const event_t *e)
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d,gw,%d\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
-                    u.cpack->write_qdepth);
+                    u.cpack->write_qdepth,chunk_gateway(u.cpack->cp));
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:

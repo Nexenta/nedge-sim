@@ -350,7 +350,9 @@ extern void handle_tcp_reception_ack (const event_t *e);
 extern void handle_replica_put_ack (const event_t *e);
 extern void handle_chunk_put_ack (const event_t *e);
 extern void report_duration_stats (void);
-extern unsigned chunk_seq (chunk_put_handle_t cp); // utility to fetch seq #
+extern unsigned chunk_seq (chunk_put_handle_t cph); // utility to fetch seq #
+extern unsigned chunk_gateway (chunk_put_handle_t cph);
+    // utility to fetch gateway that handlesa given chunk_put
 extern void init_seqnum(void);
 
 // Common Target event handlers - in common_target.c
