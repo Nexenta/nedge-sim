@@ -338,7 +338,10 @@ static void process_event (const event_t *e)
 {
     track_sample_t track_it;
     
-    now = e->tllist.time;
+    if (e->type != TRACK_SAMPLE) {
+        assert (e->tllist.time >= now);
+        now = e->tllist.time;
+    }
     switch (e->type) {
         case CHUNK_PUT_READY:
             handle_chunk_put_ready (e);
@@ -435,7 +438,7 @@ static void simulate (bool do_replicast)
     for (i = 0; i != config.n_gateways; ++i)
         start_gateway_thread((tick_t)i);
     
-    for (;
+    for (now = 0L;
          now < config.sim_duration;
          e = (const event_t *)ehead.tllist.next)
     {
