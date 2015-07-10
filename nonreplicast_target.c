@@ -66,8 +66,7 @@ void release_nonrep_targets (void)
     nrt = (nonrep_target_t *)0;
 }
 
-static void credit_ongoing_receptions (
-                                       nonrep_target_t *t,
+static void credit_ongoing_receptions (nonrep_target_t *t,
                                        unsigned current_num_receptions,
                                        tick_t time_now)
 {
@@ -237,8 +236,8 @@ void handle_tcp_reception_complete (const event_t *e)
         dws.cp = ort->cp;
         assert(chunk_seq(ort->cp));
 
-        if ((dws.write_qdepth = t->common.write_qdepth++) == 0)
-            ++track.n_active_targets;
+        dws.write_qdepth = ++t->common.write_qdepth;
+        if (dws.write_qdepth == 1) ++track.n_active_targets;
         dws.qptr = &t->common.write_qdepth;
         insert_event(dws);
         
@@ -258,7 +257,7 @@ void report_nonrep_chunk_distribution (void)
 // Report distribution of chunks to targets to log_f
 
 {
-    unsigned tally [MAX_TALLY];
+    unsigned tally[MAX_TALLY];
     const nonrep_target_t *tp;
     const nonrep_target_t *tp_lim;
     unsigned n,max_n;

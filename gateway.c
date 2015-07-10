@@ -476,6 +476,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     rep_chunk_put_accept_t accept_event;
     rep_rendezvous_xfer_received_t rendezvous_xfer_event;
     chunkput_t *cp = (chunkput_t *)cpr->cp;
+    chunkput_t *new_cp;
     gateway_t *gw = gateway + cp->gateway;
     tick_t next_chunk_time;
     
@@ -523,6 +524,10 @@ void handle_rep_chunk_put_response_received (const event_t *e)
             insert_event(rendezvous_xfer_event);
         }
     }
+    //
+    // schedule the next put request to start slightly before this rendezvous
+    // transfer will complete
+    //
     if (!gw->credit) {
         if (!gw->pending_cp) {
             gw->pending_cp = next_cp(cp->gateway);
@@ -533,12 +538,14 @@ void handle_rep_chunk_put_response_received (const event_t *e)
         next_chunk_time = rendezvous_xfer_event.event.tllist.time;
         next_chunk_time -= 3*config.cluster_trip_time;
         if (next_chunk_time <= now) next_chunk_time = now+1;
-        if ((cp = next_cp(cp->gateway)) != NULL)
-            insert_next_chunk_request(cp,next_chunk_time);
+        if ((new_cp = next_cp(cp->gateway)) == NULL)
+            ++gw->credit;
+        else
+            insert_next_chunk_request(new_cp,next_chunk_time);
     }
 }
 
-static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
+static void remove_tcp_reception_target (chunkput_t *cp,unsigned target_num)
 
 // this is a sanity checking diagnostic.
 // It does notcontribute to the final results.
@@ -546,8 +553,8 @@ static void remove_tcp_reception_target (chunkput_t *c,unsigned target_num)
 {
     unsigned  *p;
     
-    for (p = c->u.nonrep.ch_targets;
-         p != c->u.nonrep.ch_targets+config.n_replicas;
+    for (p = cp->u.nonrep.ch_targets;
+         p != cp->u.nonrep.ch_targets+config.n_replicas;
          ++p)
     {
         if (*p == target_num) {
@@ -567,7 +574,8 @@ void handle_tcp_reception_ack (const event_t *e)
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     chunkput_t *cp = (chunkput_t *)tra->cp;
     chunkput_t *new_cp;
-    gateway_t *gw = gateway + cp->gateway;
+    unsigned gway = cp->gateway;
+    gateway_t *gw = gateway + gway;
     tick_t next_tcp_time;
  
     remove_tcp_reception_target(cp,tra->target_num);
@@ -580,14 +588,16 @@ void handle_tcp_reception_ack (const event_t *e)
     if (++cp->u.nonrep.acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
     else if (gw->credit) {
-        if ((new_cp = next_cp(cp->gateway)) != NULL) {
+        new_cp = next_cp(gway);
+        if (new_cp != NULL) {
             --gw->credit;
             select_nonrep_targets(new_cp);
             next_tcp_replica_xmit(new_cp,next_tcp_time);
         }
     }
     else if (!gw->pending_cp) {
-        gw->pending_cp = next_cp(cp->gateway);
+        new_cp = next_cp(gway);
+        gw->pending_cp = new_cp;
     }
 }
 
@@ -608,6 +618,7 @@ void handle_replica_put_ack (const event_t *e)
     assert(cp->replicas_unacked);
     assert(cp->replicas_unacked <= config.n_replicas);
     
+    assert(cp->write_qdepth <= MAX_WRITE_QDEPTH);
     if (rpa->write_qdepth > cp->write_qdepth)
         cp->write_qdepth = rpa->write_qdepth;
     
@@ -615,6 +626,7 @@ void handle_replica_put_ack (const event_t *e)
         cpa.event.create_time = e->tllist.time;
         cpa.event.tllist.time = e->tllist.time + 1;
         cpa.event.type = CHUNK_PUT_ACK;
+        cpa.write_qdepth = cp->write_qdepth;
         cpa.cp = rpa->cp;
 
         insert_event(cpa);
