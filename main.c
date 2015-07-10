@@ -596,7 +596,7 @@ static void customize_config (int argc, const char ** argv)
             config.mbs_sec_per_target_drive = atoi(argv[1]);
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"utlization"))
+        else if (0 == strcmp(*argv,"utilization"))
             config.utilization = atoi(argv[1]);
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
@@ -615,6 +615,8 @@ static void customize_config (int argc, const char ** argv)
             --argv,--argc;
         }
         else {
+            fprintf(stderr,"bad arg %s %s\n",argv[0],argv[1]);
+            log_config(log_f);
             usage(argv0);
             exit(1);
         }
