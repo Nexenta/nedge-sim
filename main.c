@@ -487,7 +487,8 @@ static void derive_config (void)
     
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
-    derived.ticks_per_chunk = derived.chunk_disk_write_duration * 3L;
+    derived.ticks_per_chunk =
+        derived.chunk_disk_write_duration * config.n_replicas;;
     derived.ticks_per_chunk /= derived.n_targets;
     derived.ticks_per_chunk = derived.ticks_per_chunk*config.utilization/100L;
 }
@@ -530,7 +531,8 @@ static void usage (const char *progname) {
     fprintf(stderr," [mbs_sec <#>");
     fprintf(stderr," [terse]");
     fprintf(stderr," penalty <ticks_per_chunk>");
-    fprintf(stderr," [cluster_trip_time <ticks>\n");
+    fprintf(stderr," [cluster_trip_time <ticks>");
+    fprintf(stderr," [utilization <%%>\n");
     fprintf(stderr,"\nOr %s help\n",progname);
     fprintf(stderr,"    to print this.\n");
 
@@ -557,7 +559,7 @@ static void log_config (FILE *f)
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
     fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
-    fprintf(f,"config.utlization:%d\n",config.utilization);
+    fprintf(f,"config.utlization:%d%%\n",config.utilization);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
@@ -622,13 +624,13 @@ int main(int argc, const char * argv[]) {
     log_f = open_outf("log");
     bid_f = open_outf("bid");
 
+    
+    log_config(log_f);
     if (config.do_replicast) {
         printf("\n\nSimulating Replicast\n");
         fprintf(log_f,"Simulating Replicast\n");
         fprintf(bid_f,"Simulating Replicast\n");
 
-        log_config(log_f);
-    
         replicast = true;
         init_rep_targets(derived.n_targets);
         simulate(true);
