@@ -13,7 +13,7 @@ static unsigned total_reservations = 0;
 typedef struct rep_target_t {       // Track replicast target
     target_t    common;             // common fields
     inbound_reservation_t ir_head;  // tllist of inbound reservations
-    unsigned ir_queue_depth;        // # of inbound reservations
+    int ir_queue_depth;        // # of inbound reservations
     unsigned write_queue_depth;     // depth of write queue for this target
     tick_t last_disk_write_completion;  // last disk write completion for
                                         // this target
@@ -57,7 +57,7 @@ static void make_bid (unsigned target_num,
                       tick_t *start,
                       tick_t *lim,
                       tick_t *ack_at,
-                      unsigned *qdepth)
+                      int *qdepth)
 
 // Make a bid to receive 'chunk_num' on 'target_num' later than 'now' lasting
 // at least 'duration'. Record this bid as a new inbound_reservation for the
@@ -126,6 +126,7 @@ static void make_bid (unsigned target_num,
     tllist_insert ((tllist_t *)insert_after,(tllist_t *)ir);
     assert(qdepth);
     *qdepth = tp->ir_queue_depth++;
+    assert(tp->ir_queue_depth < 999);  // TODO
     ++total_reservations;
 }
 
@@ -221,6 +222,7 @@ static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
     free(ir);
 
     --tp->ir_queue_depth;
+    assert(tp->ir_queue_depth >= 0);
     --total_reservations;
 }
 
