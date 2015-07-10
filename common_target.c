@@ -48,6 +48,7 @@ void handle_disk_write_completion (const event_t *e)
     rpa.event.tllist.time = e->tllist.time + config.cluster_trip_time;
     rpa.event.type = REPLICA_PUT_ACK;
     rpa.cp = dwc->cp;
+
     assert(dwc->qptr);
     assert(*dwc->qptr);
     
@@ -58,7 +59,7 @@ void handle_disk_write_completion (const event_t *e)
     if (--*dwc->qptr == 0)
         --track.n_active_targets;
     
-    int depth = *dwc->qptr;
+    signed int depth = *dwc->qptr;
     assert(depth >= 0);
     assert(depth < 999);
     rpa.target_num = dwc->target_num;

@@ -10,61 +10,9 @@
 #include "storage_cluster_sim.h"
 #include <math.h>
 
-typedef struct bid {
-    tick_t  start;
-    tick_t  lim;
-    tick_t  estimated_ack;
-    unsigned target_num;
-    unsigned queue_depth;
-} bid_t;
-//
-// A bid by 'target_num' to store a chunk within the time range 'start'..'lim'
-//
 
-// Chunkput Tracking
-//
-// Information about a pending Chunk Put is accessible only on the Gateway
-// So the struct is only defined in this file. An unsigned long holds the
-// pointer for the target event handlers.
-//
-// Each chunkput_t is allocated by the gateway, and then freed when it is done.
 
-#define MAX_TARGETS_PER_NG 20
 
-typedef struct chunkput_replicast {
-    // replicast-specific ortion of chunkput_t
-    unsigned ng;     // Chunk has been assigned to this NG
-    bid_t    bids[MAX_TARGETS_PER_NG];
-        // collected bid response
-        // once rendezvous transfer is scheduled it is stored in bids[0].
-    unsigned nbids; // # of bids collected
-    unsigned responses_uncollected; // Chunk Put responses still to be collected
-} chunkput_replicast_t;
-
-typedef struct chunkput_nonreplicast {
-    // non-repicast specfici portion of chunkput_t
-    unsigned ch_targets[MAX_REPLICAS]; // selected targets
-    unsigned repnum;                    // # of replicas previously generated.
-    unsigned acked;
-    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for any target
-} chunkput_nonreplicast_t;
-
-typedef struct chunkput {       // track gateway-specific info about a chunkput
-    unsigned sig;               // must be 0xABCD
-    unsigned seqnum;             // sequence # (starting at 1) for all chunks
-                                // put as part of this simulation
-    unsigned gateway;           // which gateway?
-    tick_t   started;           // When processing of this chunk started
-    tick_t   done;              // When processing of this chunk completed
-    unsigned replicas_unacked;  // Number of replicas not yet acked
-    int write_qdepth;      // Maximum write queue depth encountered for
-                                // this chunk put
-    union chunkput_u {
-        chunkput_replicast_t replicast;
-        chunkput_nonreplicast_t nonrep;
-    } u;
-    unsigned mbz;               // must be zero
-} chunkput_t;
 
 //
 // Extraordinarily Generous TCP modeling
@@ -90,21 +38,6 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
 //      for unsolicited packets, but Replicast will actually take stakes to
 //      achieve this.
 
-
-
-void insert_next_put (unsigned gateway,tick_t insert_time)
-
-// insert the next object_put_ready event for the current object
-
-{
-    gateway_ready_t new_put;
-    
-    new_put.event.tllist.time = new_put.event.create_time = insert_time;
-    new_put.event.type = GATEWAY_READY;
-    new_put.gateway = gateway;
-    insert_event(new_put);
-}
-
 #define MINIMUM_TCPV6_BYTES 74
 #define TCP_CHUNK_SETUP_BYTES (4*MINIMUM_TCPV6_BYTES+200)
     // 4 packets for TCP connectino setup plus minimal pre-transfer data
@@ -113,7 +46,7 @@ void insert_next_put (unsigned gateway,tick_t insert_time)
 
 static unsigned n_chunkputs = 0;
 
-static chunkput_t *next_cp (unsigned gw)
+chunkput_t *next_cp (void)
 {
     chunkput_t *cp;
     
@@ -129,7 +62,6 @@ static chunkput_t *next_cp (unsigned gw)
     cp->started = now;
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
-    cp->gateway = gw;
     
     if (replicast)
         cp->u.replicast.ng = rand() % config.n_negotiating_groups;
@@ -194,48 +126,28 @@ static void select_nonrep_targets (chunkput_t *c)
     fprintf(log_f,"\n");
 }
 
-void handle_gateway_ready (const event_t *e)
+static void insert_next_chunk_put_ready (const chunkput_t *cp,
+                                         tick_t earliest_time)
 
-// replicast: create the first chunk_put_ready for this object, post it
-// once it is scheduled the next chunk_put_request can be sent.
-
-{
-    const gateway_ready_t *gr = (const gateway_ready_t *)e;
-    chunk_put_ready_t cpr;
-    chunkput_t *cp;
-    
-    cp = (chunkput_t *)calloc(1,sizeof(chunkput_t));
-    assert(cp);
-    assert(!cp->mbz);
-    
-    cpr.event.create_time = e->tllist.time;
-    cpr.event.tllist.time = e->tllist.time + 1;
-    cpr.cp = (chunk_put_handle_t)cp;
-    cp->sig = 0xABCD;
-    
-    cp->seqnum = ++n_chunkputs;
-    ++track.n_initiated;
-    cp->started = e->tllist.time;
-    cp->gateway = gr->gateway;
-    cp->replicas_unacked = config.n_replicas;
-    assert(cp->replicas_unacked);
-    cpr.event.type = CHUNK_PUT_READY;
-    
-    insert_event (cpr);
-}
-
-static void insert_next_chunk_request (const chunkput_t *cp,tick_t time)
-
-// Generate thenext Chunk Put Ready event for the current object
+// Generate thenext Chunk Put Ready event
 
 {
     chunk_put_ready_t cpr;
+    tick_t  pace_time = cp->seqnum*derived.ticks_per_chunk;
+    tick_t insert_time;
     
     assert(cp);
-    assert(!cp->mbz);
     
-    cpr.event.create_time = time;
-    cpr.event.tllist.time = time + 1;
+    cpr.event.create_time = now;
+    cpr.event.tllist.time = earliest_time;
+    
+    insert_time =  (earliest_time < pace_time) ? pace_time : earliest_time;
+    if (insert_time <= now) insert_time = now + 1;
+    
+    if (insert_time != earliest_time) {
+        fprintf(log_f,"Chunk,0x%p,%d,InsertionTimeAdjusted,%lu,%lu\n",
+                cp,cp->seqnum,earliest_time,insert_time);
+    }
     cpr.event.type = CHUNK_PUT_READY;
     cpr.cp = (chunk_put_handle_t)cp;
         
@@ -262,68 +174,59 @@ static void insert_next_chunk_request (const chunkput_t *cp,tick_t time)
 void handle_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
-    rep_chunk_put_request_received_t cprr;
     chunkput_t *cp = (chunkput_t *)cpr->cp;
-    gateway_t *gw = gateway + cp->gateway;
+    rep_chunk_put_request_received_t cprr;
     
     assert (cp);
     assert(!cp->mbz);
     
-    if (!gw->credit) {
-        if (now < config.sim_duration  &&  !gw->pending_cp)
-            gw->pending_cp = cp;
+    if (replicast) {
+        cprr.event.create_time = e->tllist.time;
+        cprr.event.tllist.time   = e->tllist.time +
+        config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
+        cprr.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
+        cprr.cp = (chunk_put_handle_t)cp;
+        cp->u.replicast.responses_uncollected = config.n_targets_per_ng;
+        
+        /* for each Target in randomly selected negotiating group.
+         * the Targets are assigned round-robin to Negotiating Groups.
+         *
+         * Actual Negotiating Groups are selected based on cryptographic hash
+         * of the payload (for payload chunks) or the object name (for metadata)
+         */
+        cp->u.replicast.ng = rand() % config.n_negotiating_groups;
+        for_ng(cprr.target_num,cp->u.replicast.ng)
+            insert_event(cprr);
     }
     else {
-        --gw->credit;
-
-        if (replicast) {
-            cprr.event.create_time = e->tllist.time;
-            cprr.event.tllist.time   = e->tllist.time +
-                config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
-            cprr.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
-            cprr.cp = (chunk_put_handle_t)cp;
-            cp->u.replicast.responses_uncollected = config.n_targets_per_ng;
-            
-            /* for each Target in randomly selected negotiating group.
-             * the Targets are assigned round-robin to Negotiating Groups.
-             *
-             * Actual Negotiating Groups are selected based on cryptographic hash
-             * of the payload (for payload chunks) or the object name (for metadata)
-             */
-            cp->u.replicast.ng = rand() % config.n_negotiating_groups;
-            for_ng(cprr.target_num,cp->u.replicast.ng)
-                insert_event(cprr);
-        }
-        else {
-            select_nonrep_targets(cp);
-            next_tcp_replica_xmit(cp,e->tllist.time);
-        }
+        select_nonrep_targets(cp);
+        next_tcp_replica_xmit(cp,e->tllist.time);
     }
  }
 
 static void save_bid (bid_t *bids,
                       unsigned *nbids,
-                      const rep_chunk_put_response_received_t *cpr)
+                      const rep_chunk_put_response_received_t *cprr)
 //
 // save the bid within 'cpr' in bids[n*bids], then increment *nbids
 // verify that *nbids <= N_TARGETS_PER_NG
 //
 {
     bid_t *b;
-    assert(cpr);
-    assert(cpr->bid_start < cpr->bid_lim);
-    assert(cpr->target_num < derived.n_targets);
+    assert(cprr);
+    assert(cprr->bid_start < cprr->bid_lim);
+    assert(cprr->target_num < derived.n_targets);
     assert (nbids);
     assert (*nbids <= config.n_targets_per_ng);
-    assert(cpr->qdepth >= 0);
-    assert(cpr->qdepth < 999);
+    assert(cprr->qdepth >= 0);
+    assert(cprr->qdepth < 999);
     
     b = bids + *nbids;
-    b->start = cpr->bid_start;
-    b->lim = cpr->bid_lim;
-    b->estimated_ack = cpr->estimated_ack;
-    b->target_num = cpr->target_num;
-    b->queue_depth = cpr->qdepth;
+    b->start = cprr->bid_start;
+    b->lim = cprr->bid_lim;
+    b->estimated_ack = cprr->estimated_ack;
+    b->target_num = cprr->target_num;
+    b->queue_depth = cprr->qdepth;
     ++*nbids;
 }
 
@@ -473,13 +376,12 @@ static bool target_in_accepted_list (const unsigned *accepted,unsigned target)
 
 void handle_rep_chunk_put_response_received (const event_t *e)
 {
-    const rep_chunk_put_response_received_t *cpr =
+    const rep_chunk_put_response_received_t *cprr =
         (const rep_chunk_put_response_received_t *)e;
     rep_chunk_put_accept_t accept_event;
     rep_rendezvous_xfer_received_t rendezvous_xfer_event;
-    chunkput_t *cp = (chunkput_t *)cpr->cp;
+    chunkput_t *cp = (chunkput_t *)cprr->cp;
     chunkput_t *new_cp;
-    gateway_t *gw = gateway + cp->gateway;
     tick_t next_chunk_time;
     
     assert(cp);
@@ -490,18 +392,18 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     assert(cp->u.replicast.responses_uncollected <= config.n_targets_per_ng);
     assert(replicast);
     
-    save_bid (cp->u.replicast.bids,&cp->u.replicast.nbids,cpr);
+    save_bid (cp->u.replicast.bids,&cp->u.replicast.nbids,cprr);
     if (--cp->u.replicast.responses_uncollected) return;
     
     accept_event.event.create_time = e->tllist.time;
     accept_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
     accept_event.event.type = REP_CHUNK_PUT_ACCEPT_RECEIVED;
-    accept_event.cp = cpr->cp;
+    accept_event.cp = cprr->cp;
 
     memset(&accept_event.accepted_target[0],0,
            sizeof accept_event.accepted_target);
     
-    select_replicast_targets (cpr->cp,cp->u.replicast.nbids,
+    select_replicast_targets (cprr->cp,cp->u.replicast.nbids,
                               cp->u.replicast.bids,
                               accept_event.accepted_target);
     accept_event.window_start = cp->u.replicast.bids[0].start;
@@ -530,21 +432,11 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     // schedule the next put request to start slightly before this rendezvous
     // transfer will complete
     //
-    if (!gw->credit) {
-        if (!gw->pending_cp) {
-            gw->pending_cp = next_cp(cp->gateway);
-        }
-    }
-    else {
-        --gw->credit;
-        next_chunk_time = rendezvous_xfer_event.event.tllist.time;
-        next_chunk_time -= 3*config.cluster_trip_time;
-        if (next_chunk_time <= now) next_chunk_time = now+1;
-        if ((new_cp = next_cp(cp->gateway)) == NULL)
-            ++gw->credit;
-        else
-            insert_next_chunk_request(new_cp,next_chunk_time);
-    }
+    next_chunk_time = rendezvous_xfer_event.event.tllist.time;
+    next_chunk_time -= 3*config.cluster_trip_time;
+    if (next_chunk_time <= now) next_chunk_time = now+1;
+    if ((new_cp = next_cp()) != NULL)
+        insert_next_chunk_put_ready(new_cp,next_chunk_time);
 }
 
 static void remove_tcp_reception_target (chunkput_t *cp,unsigned target_num)
@@ -576,8 +468,6 @@ void handle_tcp_reception_ack (const event_t *e)
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     chunkput_t *cp = (chunkput_t *)tra->cp;
     chunkput_t *new_cp;
-    unsigned gway = cp->gateway;
-    gateway_t *gw = gateway + gway;
     tick_t next_tcp_time;
  
     remove_tcp_reception_target(cp,tra->target_num);
@@ -589,18 +479,8 @@ void handle_tcp_reception_ack (const event_t *e)
     if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->u.nonrep.acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
-    else if (gw->credit) {
-        new_cp = next_cp(gway);
-        if (new_cp != NULL) {
-            --gw->credit;
-            select_nonrep_targets(new_cp);
-            next_tcp_replica_xmit(new_cp,next_tcp_time);
-        }
-    }
-    else if (!gw->pending_cp) {
-        new_cp = next_cp(gway);
-        gw->pending_cp = new_cp;
-    }
+    else if ((new_cp = next_cp()) != NULL)
+        insert_next_chunk_put_ready(new_cp,next_tcp_time);
 }
 
 void handle_replica_put_ack (const event_t *e)
@@ -646,7 +526,6 @@ void handle_chunk_put_ack (const event_t *e)
 {
     const chunk_put_ack_t *cpa = (const chunk_put_ack_t *)e;
     chunkput_t *cp;
-    gateway_t *gw;
     tick_t duration;
 
     unsigned long n_pending;
@@ -693,24 +572,10 @@ void handle_chunk_put_ack (const event_t *e)
     if (cp->write_qdepth > track.max_write_qdepth)
         track.max_write_qdepth = cp->write_qdepth;
     
-    gw = gateway + cp->gateway;
-    
     assert(!cp->replicas_unacked);
     memset(cp,0xFE,sizeof *cp);
     free(cp);
     assert(!track.mbz);
-    
-    ++gw->credit;
-    if ((cp = gw->pending_cp) != (void *)0) {
-        gw->pending_cp = (void *)0;
-
-        if (replicast)
-            insert_next_chunk_request(cp,now+1);
-        else {
-            select_nonrep_targets(cp);
-            next_tcp_replica_xmit(cp,now+1);
-        }
-    }
 }
 
 void report_duration_stats (void)

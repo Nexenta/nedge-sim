@@ -32,11 +32,11 @@ typedef struct sim_config {
                                     // Recommend simulation values: 4K,64K,1M
     unsigned long sim_duration;     // Simulation duration in network bit-ticks.
     unsigned n_gateways;            // # of gateways producing chunks
-    unsigned per_gateway_limit;     // limit on # of unacknowledged chunks
-                                    // per gateway
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
+    unsigned utilization;           // target % of disk capacity to aim to use
+    bool terse;                     // if true, omit many events from log_f
 } sim_config_t;
 
 extern sim_config_t config;
@@ -61,6 +61,8 @@ typedef struct sim_derived_config {
     tick_t chunk_udp_xmit_duration;     // How long to UDP send a chunk?
     tick_t chunk_tcp_xmit_duration;     // How long to TCP send a chunk?
     tick_t chunk_disk_write_duration;   // How long to write a chunk to disk?
+    tick_t ticks_per_chunk;             // How many ticks per chunk to achieve
+                                        // utilization target
 } sim_derived_config_t;
 
 extern sim_derived_config_t derived;

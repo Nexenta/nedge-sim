@@ -52,9 +52,10 @@ sim_config_t config = {
     .n_replicas = N_REPLICAS,
     .chunk_size = CHUNK_SIZE,
     .n_gateways = N_GATEWAYS,
-    .per_gateway_limit=PER_GATEWAY_LIMIT,
-    .sim_duration = 1024L*1024L*1024L,
-    .seed = 0x12345678
+    .utilization = 66,
+    .sim_duration = TICKS_PER_SECOND/100,
+    .seed = 0x12345678,
+    
 };
 
 sim_derived_config_t derived;
@@ -70,8 +71,6 @@ static event_t ehead = { // The list of events for gateways and targets
     .create_time = 0,
     .type = NULL_EVENT
 };
-
-gateway_t gateway[MAX_GATEWAYS];
 
 trackers_t track = {.min_duration = ~0L};
 
@@ -198,7 +197,6 @@ static void log_event (FILE *f,const event_t *e)
     const char *tag = replicast ? "rep" : "non";
     union event_ptr_union {
         const event_t *e;
-        const gateway_ready_t *gr;
         const chunk_put_ready_t   *cpr;
         const rep_chunk_put_request_received_t *cpreq;
         const rep_chunk_put_response_received_t *cpresp;
@@ -215,25 +213,27 @@ static void log_event (FILE *f,const event_t *e)
     
     u.e = e;
     switch (e->type) {
-        case GATEWAY_READY:
-            fprintf(f,"0x%lx,0x%lx,%s GATEWAY_READY,%d\n",
-                    e->tllist.time,e->create_time,tag,u.gr->gateway);
-            break;
         case CHUNK_PUT_READY:
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d,gw,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
                     e->tllist.time,e->create_time,tag,
-                    u.cpr->cp,chunk_seq(u.cpr->cp),chunk_gateway(u.cpr->cp));
+                    u.cpr->cp,chunk_seq(u.cpr->cp));
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
-            fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d,%d\n",
-                    e->tllist.time,e->create_time,u.cpreq->cp,
-                    chunk_seq(u.cpreq->cp),u.cpreq->target_num);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d",
+                        e->tllist.time,e->create_time,u.cpreq->cp,
+                        chunk_seq(u.cpreq->cp));
+                fprintf(f,",tgt,%d\n",u.cpreq->target_num);
+            }
             break;
         case REP_CHUNK_PUT_RESPONSE_RECEIVED:
-            fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,tgt,%d,",
-                    e->tllist.time,e->create_time,u.cpresp->cp,
-                    chunk_seq(u.cpresp->cp),u.cpresp->target_num);
-            fprintf(f,"0x%lx,0x%lx\n",u.cpresp->bid_start,u.cpresp->bid_lim);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,",
+                        e->tllist.time,e->create_time,u.cpresp->cp,
+                        chunk_seq(u.cpresp->cp));
+                fprintf(f,"tgt,%d,bid,0x%lx,0x%lx\n",u.cpresp->target_num,
+                        u.cpresp->bid_start,u.cpresp->bid_lim);
+            }
             break;
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
             fprintf(f,
@@ -247,21 +247,27 @@ static void log_event (FILE *f,const event_t *e)
             fprintf(f,"\n");
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
-            fprintf(f,"0x%lx,0x%lx",e->tllist.time,e->create_time);
-            fprintf(f,",REP_CHUNK_RENDEZVOUS_XFER_RCVD,CP,0x%lx,%d,tgt,%d\n",
-                    u.rtr->cp,chunk_seq(u.rtr->cp),u.rtr->target_num);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx",e->tllist.time,e->create_time);
+                fprintf(f,",REP_CHUNK_RENDEZVOUS_XFER_RCVD,CP,0x%lx,%d,tgt,%d\n",
+                        u.rtr->cp,chunk_seq(u.rtr->cp),u.rtr->target_num);
+            }
             break;
         case TCP_XMIT_RECEIVED:
-            fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
-                    e->tllist.time,e->create_time,
-                    u.txr->cp,chunk_seq(u.txr->cp),
-                    u.txr->target_num);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
+                        e->tllist.time,e->create_time,
+                        u.txr->cp,chunk_seq(u.txr->cp),
+                        u.txr->target_num);
+            }
             break;
         case TCP_RECEPTION_COMPLETE:
-            fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_COMPLETE,0x%lx,%d,tgt,%d\n",
-                    e->tllist.time,e->create_time,
-                    u.trc->cp,chunk_seq(u.trc->cp),
-                    u.trc->target_num);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_COMPLETE,0x%lx,%d",
+                        e->tllist.time,e->create_time,
+                        u.trc->cp,chunk_seq(u.trc->cp));
+                fprintf(f,",tgt,%d\n",u.trc->target_num);
+            }
             break;
         case TCP_RECEPTION_ACK:
             fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_ACK,0x%lx,%d,tgt,%d\n",
@@ -269,32 +275,35 @@ static void log_event (FILE *f,const event_t *e)
                     u.tra->cp,chunk_seq(u.tra->cp),u.tra->target_num);
             break;
         case DISK_WRITE_START:
-            fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_START,0x%lx,%d",
-                    e->tllist.time,e->create_time,tag,
-                    u.dws->cp,chunk_seq(u.dws->cp));
-            fprintf(f,",tgt,%d,qdepth,%d\n",u.dwc->target_num,
-                    u.dwc->write_qdepth);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_START,0x%lx,%d",
+                        e->tllist.time,e->create_time,tag,
+                        u.dws->cp,chunk_seq(u.dws->cp));
+                fprintf(f,",tgt,%d,qdepth,%d\n",u.dwc->target_num,
+                        u.dwc->write_qdepth);
+            }
             break;
         case DISK_WRITE_COMPLETION:
-            fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_COMPLETION,0x%lx,%d,tgt,%d",
-                    e->tllist.time,e->create_time,tag,
-                    u.dwc->cp,chunk_seq(u.dwc->cp),
-                    u.dwc->target_num);
-            fprintf(f,",target,%d,qdepth,%d\n",u.dwc->target_num,
-                    u.dwc->write_qdepth);
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_COMPLETION,0x%lx,%d,tgt,%d",
+                        e->tllist.time,e->create_time,tag,
+                        u.dwc->cp,chunk_seq(u.dwc->cp),
+                        u.dwc->target_num);
+                fprintf(f,",target,%d,qdepth,%d\n",u.dwc->target_num,
+                        u.dwc->write_qdepth);
+            }
             break;
         case REPLICA_PUT_ACK:
             fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,0x%lx,%d,tgt,%d",
                     e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
-            fprintf(f,",depth,%d,gw,%d\n",u.rpack->write_qdepth,
-                    chunk_gateway(u.rpack->cp));
+            fprintf(f,",depth,%d\n",u.rpack->write_qdepth);
             break;
         case CHUNK_PUT_ACK:
 	    assert(u.cpack->write_qdepth >= 0);
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d,gw,%d\n",
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
-                    u.cpack->write_qdepth,chunk_gateway(u.cpack->cp));
+                    u.cpack->write_qdepth);
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -331,9 +340,6 @@ static void process_event (const event_t *e)
     
     now = e->tllist.time;
     switch (e->type) {
-        case GATEWAY_READY:
-            handle_gateway_ready (e);
-            break;
         case CHUNK_PUT_READY:
             handle_chunk_put_ready (e);
             break;
@@ -386,16 +392,32 @@ static void process_event (const event_t *e)
     }
 }
 
+static void start_gateway_thread (tick_t insert_time)
+
+// replicast: create the first chunk_put_ready for this object, post it
+// once it is scheduled the next chunk_put_request can be sent.
+
+{
+    chunk_put_ready_t cpr;
+    chunkput_t *cp = next_cp();
+    
+    assert(cp);
+    assert(!cp->mbz);
+    
+    cpr.event.create_time = now;
+    cpr.event.tllist.time = insert_time;
+    cpr.event.type = CHUNK_PUT_READY;
+    cpr.cp = (chunk_put_handle_t)cp;
+    
+    insert_event (cpr);
+}
+
 static void simulate (bool do_replicast)
 {
     const event_t *e;
     track_sample_t track_it;
     unsigned i;
-    tick_t first_chunk_time = 0L;
-    
-    gateway[0].credit = (signed)config.per_gateway_limit;
-    gateway[0].pending_cp = (void *)0;
-    memcpy(gateway+1,gateway,(sizeof gateway)-(sizeof gateway[0]));
+    unsigned prior_tenths_done = 0,tenths_done;
     
     track_it.event.create_time = now = 0L;
     track_it.event.tllist.time = TICKS_PER_SECOND / 1000;
@@ -410,15 +432,18 @@ static void simulate (bool do_replicast)
            config.chunk_size/1024);
     e = (const event_t *)ehead.tllist.next;
     
-    for (i = 0; i != config.n_gateways; ++i) {
-        first_chunk_time += (rand() % 1024);
-        insert_next_put(i,first_chunk_time);
-    }
+    for (i = 0; i != config.n_gateways; ++i)
+        start_gateway_thread((tick_t)i);
     
     for (;
          now < config.sim_duration;
          e = (const event_t *)ehead.tllist.next)
     {
+        tenths_done = (unsigned)(now*10L/config.sim_duration);
+        if (tenths_done != prior_tenths_done) {
+            fprintf(stderr,"%d tenths done\n",tenths_done);
+            prior_tenths_done = tenths_done;
+        }
         if (log_f) log_event(log_f,e);
         process_event(e);
         event_remove((event_t *)e);
@@ -462,6 +487,9 @@ static void derive_config (void)
     
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
+    derived.ticks_per_chunk = derived.chunk_disk_write_duration * 3L;
+    derived.ticks_per_chunk /= derived.n_targets;
+    derived.ticks_per_chunk = derived.ticks_per_chunk*config.utilization/100L;
 }
 
 static FILE *open_outf (const char *type)
@@ -500,6 +528,7 @@ static void usage (const char *progname) {
     fprintf(stderr," [chunk_size <kbytes>]\n");
     fprintf(stderr," [gateways <#>],");
     fprintf(stderr," [mbs_sec <#>");
+    fprintf(stderr," [terse]");
     fprintf(stderr," penalty <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>\n");
     fprintf(stderr,"\nOr %s help\n",progname);
@@ -512,12 +541,13 @@ static void usage (const char *progname) {
 }
 
 static void log_config (FILE *f)
-{ // TODO add missing fields
-    float duration;
+{
+    float duration_msecs;
     fprintf(f,"config.do_replicast:%d\n",config.do_replicast);
     fprintf(f,"config.do_ch:%d\n",config.do_ch);
-    duration = (float)config.sim_duration * 1000 / TICKS_PER_SECOND;
-    fprintf(f,"config.sim_duration:%lu (0x%lx) ticks = %.2f msecs\n",config.sim_duration, config.sim_duration, duration);
+    duration_msecs = (float)config.sim_duration * 1000 / TICKS_PER_SECOND;
+    fprintf(f,"config.sim_duration:%lu (0x%lx) ticks = %.2f msecs\n",
+            config.sim_duration, config.sim_duration,duration_msecs);
     fprintf(f,"config.cluster_trip_time:%d\n",config.cluster_trip_time);
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
     fprintf(f,"config.mbs_sec_per_target_drive:%d\n",
@@ -527,9 +557,11 @@ static void log_config (FILE *f)
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
     fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
+    fprintf(f,"config.utlization:%d\n",config.utilization);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
+    if (config.terse) fprintf(f,"config.terse\n");
 }
 
 static void customize_config (int argc, const char ** argv)
@@ -549,13 +581,8 @@ static void customize_config (int argc, const char ** argv)
             config.n_targets_per_ng = atoi(argv[1]);
         else if (0 == strcmp(*argv,"chunk_size"))
             config.chunk_size = atoi(argv[1])*1024;
-        else if (0 == strcmp(*argv,"gateways")) {
+        else if (0 == strcmp(*argv,"gateways"))
             config.n_gateways = atoi(argv[1]);
-            if (config.n_gateways > MAX_GATEWAYS) {
-                fprintf(stderr,"Gateways set to max:%d\n",MAX_GATEWAYS);
-                config.n_gateways = MAX_GATEWAYS;
-            }
-        }
         else if (0 == strcmp(*argv,"duration"))
             config.sim_duration = atoi(argv[1]) * (TICKS_PER_SECOND/1000);
         else if (0 == strcmp(*argv,"seed"))
@@ -564,6 +591,8 @@ static void customize_config (int argc, const char ** argv)
             config.mbs_sec_per_target_drive = atoi(argv[1]);
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"utlization"))
+            config.utilization = atoi(argv[1]);
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;
@@ -576,6 +605,10 @@ static void customize_config (int argc, const char ** argv)
         }
         else if (0 == strcmp(*argv,"penalty"))
             config.replicast_packet_processing_penalty = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"terse")) {
+            config.terse = true;
+            --argv,--argc;
+        }
         else {
             usage(argv0);
             exit(1);

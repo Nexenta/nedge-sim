@@ -41,7 +41,6 @@ typedef struct inbound_reservation {
 
 typedef enum event_type {
     NULL_EVENT,
-    GATEWAY_READY,
     CHUNK_PUT_READY,
     REP_CHUNK_PUT_REQUEST_RECEIVED,
     REP_CHUNK_PUT_RESPONSE_RECEIVED,
@@ -66,17 +65,6 @@ typedef struct event {
     unsigned sig;   // Must be 0x1234
 } event_t;
 
-// Gateway Tracking
-#define MAX_GATEWAYS 1024
-
-typedef struct gateway {
-    signed  credit;     // how many chunks can this gateway initiate.
-                        // credits are decremented when a chunk is initiated.
-                        // credits are replinished when the chunk is acked.
-    void *pending_cp;   // chunkput awaiting gateway credit for this gateway
-} gateway_t;
-
-extern gateway_t gateway[MAX_GATEWAYS];
 
 // Tracking data
 
@@ -109,13 +97,6 @@ extern trackers_t track;
 /* The specific events - This is also a handy summary of the timeline
  */
 
-typedef struct gateway_ready {
-    event_t  event;             // gateway_ready is an event
-    unsigned gateway;           // which gateway?
-} gateway_ready_t;
-//
-// The targeted gateway will produce a series of chunks;
-//
 
 typedef struct chunk_put_ready {
     event_t event;          // chunk_put_ready is an event
@@ -339,11 +320,64 @@ typedef struct target { // common fields for replicast and non-replicast target
     unsigned write_qdepth;
 } target_t;
 
-    // are we simulating replicast or non-replicast right now?
+// Chunkput Tracking
+//
+// Information about a pending Chunk Put is accessible only on the Gateway
+// So the struct is only defined in this file. An unsigned long holds the
+// pointer for the target event handlers.
+//
+// Each chunkput_t is allocated by the gateway, and then freed when it is done.
+
+typedef struct bid {
+    tick_t  start;
+    tick_t  lim;
+    tick_t  estimated_ack;
+    unsigned target_num;
+    unsigned queue_depth;
+} bid_t;
+
+//
+// A bid by 'target_num' to store a chunk within the time range 'start'..'lim'
+//
+#define MAX_TARGETS_PER_NG 20
+
+typedef struct chunkput_replicast {
+    // replicast-specific ortion of chunkput_t
+    unsigned ng;     // Chunk has been assigned to this NG
+    bid_t    bids[MAX_TARGETS_PER_NG];
+    // collected bid response
+    // once rendezvous transfer is scheduled it is stored in bids[0].
+    unsigned nbids; // # of bids collected
+    unsigned responses_uncollected; // Chunk Put responses still to be collected
+} chunkput_replicast_t;
+
+typedef struct chunkput_nonreplicast {
+    // non-repicast specfici portion of chunkput_t
+    unsigned ch_targets[MAX_REPLICAS]; // selected targets
+    unsigned repnum;                    // # of replicas previously generated.
+    unsigned acked;
+    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for any target
+} chunkput_nonreplicast_t;
+
+typedef struct chunkput {       // track gateway-specific info about a chunkput
+    unsigned sig;               // must be 0xABCD
+    unsigned seqnum;             // sequence # (starting at 1) for all chunks
+    // put as part of this simulation
+    unsigned gateway;           // which gateway?
+    tick_t   started;           // When processing of this chunk started
+    tick_t   done;              // When processing of this chunk completed
+    unsigned replicas_unacked;  // Number of replicas not yet acked
+    int write_qdepth;      // Maximum write queue depth encountered for
+    // this chunk put
+    union chunkput_u {
+        chunkput_replicast_t replicast;
+        chunkput_nonreplicast_t nonrep;
+    } u;
+    unsigned mbz;               // must be zero
+} chunkput_t;
 
 // Gateway event handlers - in gateway.c
-void insert_next_put (unsigned gateway,tick_t insert_time);
-void handle_gateway_ready (const event_t *e);
+extern chunkput_t *next_cp (void);
 extern void handle_chunk_put_ready (const event_t *e);
 extern void handle_rep_chunk_put_response_received (const event_t *e);
 extern void handle_tcp_reception_ack (const event_t *e);
@@ -351,8 +385,7 @@ extern void handle_replica_put_ack (const event_t *e);
 extern void handle_chunk_put_ack (const event_t *e);
 extern void report_duration_stats (void);
 extern unsigned chunk_seq (chunk_put_handle_t cph); // utility to fetch seq #
-extern unsigned chunk_gateway (chunk_put_handle_t cph);
-    // utility to fetch gateway that handlesa given chunk_put
+
 extern void init_seqnum(void);
 
 // Common Target event handlers - in common_target.c
