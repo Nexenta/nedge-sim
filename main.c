@@ -290,6 +290,7 @@ static void log_event (FILE *f,const event_t *e)
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             break;
         case CHUNK_PUT_ACK:
+	    assert(u.cpack->write_qdepth >= 0);
             fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d,gw,%d\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
                     u.cpack->write_qdepth,chunk_gateway(u.cpack->cp));
@@ -511,9 +512,11 @@ static void usage (const char *progname) {
 
 static void log_config (FILE *f)
 { // TODO add missing fields
+    float duration;
     fprintf(f,"config.do_replicast:%d\n",config.do_replicast);
     fprintf(f,"config.do_ch:%d\n",config.do_ch);
-    fprintf(f,"config.sim_duration:%lu\n",config.sim_duration);
+    duration = (float)config.sim_duration * 1000 / TICKS_PER_SECOND;
+    fprintf(f,"config.sim_duration:%lu (0x%lx) ticks = %.2f msecs\n",config.sim_duration, config.sim_duration, duration);
     fprintf(f,"config.cluster_trip_time:%d\n",config.cluster_trip_time);
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
     fprintf(f,"config.mbs_sec_per_target_drive:%d\n",
@@ -553,7 +556,7 @@ static void customize_config (int argc, const char ** argv)
             }
         }
         else if (0 == strcmp(*argv,"duration"))
-            config.sim_duration = atoi(argv[1])*TICKS_PER_SECOND/1000;
+            config.sim_duration = atoi(argv[1]) * (TICKS_PER_SECOND/1000);
         else if (0 == strcmp(*argv,"seed"))
             config.seed = atoi(argv[1]);
         else if (0 == strcmp(*argv,"mbs_sec"))

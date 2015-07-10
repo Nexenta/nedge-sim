@@ -14,6 +14,8 @@ void handle_disk_write_start (const event_t *e)
     disk_write_start_t *dws = (disk_write_start_t *)e;
     disk_write_completion_t dwc;
     
+    assert(dws->write_qdepth >= 0);
+    assert(dws->write_qdepth < 999);
     dwc.event.create_time = e->tllist.time;
     dwc.event.tllist.time = dwc.event.create_time +
                             derived.chunk_disk_write_duration;
@@ -39,6 +41,8 @@ void handle_disk_write_completion (const event_t *e)
     replica_put_ack_t rpa;
     assert(e);
     assert(chunk_seq(dwc->cp));
+    assert(dwc->write_qdepth >= 0);
+    assert(dwc->write_qdepth < 999);
 
     rpa.event.create_time = e->tllist.time;
     rpa.event.tllist.time = e->tllist.time + config.cluster_trip_time;
@@ -54,6 +58,9 @@ void handle_disk_write_completion (const event_t *e)
     if (--*dwc->qptr == 0)
         --track.n_active_targets;
     
+    int depth = *dwc->qptr;
+    assert(depth >= 0);
+    assert(depth < 999);
     rpa.target_num = dwc->target_num;
     assert(dwc->target_num < derived.n_targets);
     rpa.write_qdepth = dwc->write_qdepth;

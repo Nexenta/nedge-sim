@@ -57,7 +57,7 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
     tick_t   started;           // When processing of this chunk started
     tick_t   done;              // When processing of this chunk completed
     unsigned replicas_unacked;  // Number of replicas not yet acked
-    unsigned write_qdepth;      // Maximum write queue depth encountered for
+    int write_qdepth;      // Maximum write queue depth encountered for
                                 // this chunk put
     union chunkput_u {
         chunkput_replicast_t replicast;
@@ -315,6 +315,8 @@ static void save_bid (bid_t *bids,
     assert(cpr->target_num < derived.n_targets);
     assert (nbids);
     assert (*nbids <= config.n_targets_per_ng);
+    assert(cpr->qdepth >= 0);
+    assert(cpr->qdepth < 999);
     
     b = bids + *nbids;
     b->start = cpr->bid_start;
@@ -608,6 +610,10 @@ void handle_replica_put_ack (const event_t *e)
     assert(cp->replicas_unacked);
     assert(cp->replicas_unacked <= config.n_replicas);
     
+    assert(rpa->write_qdepth >= 0);
+    assert(rpa->write_qdepth < 999);
+    assert(cp->write_qdepth >= 0);
+    assert(cp->write_qdepth < 999);
     if (rpa->write_qdepth > cp->write_qdepth)
         cp->write_qdepth = rpa->write_qdepth;
     
@@ -636,11 +642,16 @@ void handle_chunk_put_ack (const event_t *e)
     char *tag = replicast ? "replicast" : "non";
     
     assert(e);
+    assert(cpa->write_qdepth >= 0);
+    assert(cpa->write_qdepth < 999);
     cp = (chunkput_t *)cpa->cp;
     cp->done = e->tllist.time;
     assert(cp->seqnum);
     assert(cp->sig == 0xABCD);
     duration = cp->done - cp->started;
+
+    assert(cp->write_qdepth >= 0);
+    assert(cp->write_qdepth < 999);
 
     fprintf(log_f,
             "0x%lx,%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",

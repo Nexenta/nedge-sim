@@ -154,7 +154,7 @@ typedef struct rep_chunk_put_response_received {
     tick_t  bid_lim;        // End of the bid window from this target
     tick_t  estimated_ack;  // When is the estimated ack for this transfer
                             // This estimates the write delay and duration
-    unsigned qdepth;        // depth of target's inbound reservation queue
+    int qdepth;        // depth of target's inbound reservation queue
 } rep_chunk_put_response_received_t;
 //
 // Each target in the Negotiationg Group that receives a chunk_put_request
@@ -249,7 +249,7 @@ typedef struct disk_write_start {
     event_t event;          // disk_write_start is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // which target is completing the write?
-    unsigned write_qdepth;
+    int write_qdepth;
     unsigned *qptr;         // pointer to counter to be incremented when this
     // event is executed.
 } disk_write_start_t;
@@ -265,7 +265,7 @@ typedef struct disk_write_completion {
     event_t event;          // disk_write_completion is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // which target is completing the write?
-    unsigned write_qdepth;  // depth of write queue encountered on this target
+    int write_qdepth;  // depth of write queue encountered on this target
     unsigned *qptr;         // pointer to counter to be decremented when this
                             // event is executed.
 } disk_write_completion_t;
@@ -281,7 +281,7 @@ typedef struct replica_put_ack {
     event_t event;          // replica_put_ack is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // replica was created on this target
-    unsigned write_qdepth;  // depth of write queue encountered on this target
+    int write_qdepth;  // depth of write queue encountered on this target
 } replica_put_ack_t;
 //
 // This event reports to the gateway that one of the replicas for chunk
@@ -294,7 +294,7 @@ typedef struct replica_put_ack {
 typedef struct chunk_put_ack {
     event_t event;          // chunk_put_ack is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
-    unsigned write_qdepth;  // max depth of write queue encountered
+    int write_qdepth;  // max depth of write queue encountered
                             // for this chunk
 } chunk_put_ack_t;
 //
