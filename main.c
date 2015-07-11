@@ -632,9 +632,9 @@ int main(int argc, const char * argv[]) {
     
     log_config(log_f);
     if (config.do_replicast) {
-        printf("\nSimulating NGH/Replicast ***********************************************\n");
-        fprintf(log_f,"Simulating NGH/Replicast\n");
-        fprintf(bid_f,"Simulating NGH/Replicast\n");
+        printf     ("\nSimulating NGH/Replicast ***********************************************\n");
+        fprintf(log_f,"Simulating NGH/Replicast ***********************************************\n");
+        fprintf(bid_f,"Simulating NGH/Replicast ***********************************************\n");
 
         replicast = true;
         init_rep_targets(derived.n_targets);
@@ -645,9 +645,9 @@ int main(int argc, const char * argv[]) {
         fprintf(bid_f,"\n");
     }
     if (config.do_ch) {
-        printf("\nSimulating CH/TCP ***********************************************\n");
-        fprintf(log_f,"Simulating CH/TCP\n");
-        fprintf(bid_f,"Simulating CH/TCP\n");
+        printf     ("\nSimulating CH/TCP ***********************************************\n");
+        fprintf(log_f,"Simulating CH/TCP ***********************************************\n");
+        fprintf(bid_f,"Simulating CH/TCP ***********************************************\n");
 
         init_seqnum();
         replicast = false;
