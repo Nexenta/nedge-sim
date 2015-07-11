@@ -535,7 +535,7 @@ static void usage (const char *progname) {
     fprintf(stderr," [terse]");
     fprintf(stderr," penalty <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>");
-    fprintf(stderr," [utilization <%%>\n");
+    fprintf(stderr," [utilization <%%>]\n");
     fprintf(stderr,"\nOr %s help\n",progname);
     fprintf(stderr,"    to print this.\n");
 
@@ -615,8 +615,7 @@ static void customize_config (int argc, const char ** argv)
             --argv,--argc;
         }
         else {
-            fprintf(stderr,"bad arg %s %s\n",argv[0],argv[1]);
-            log_config(log_f);
+            fprintf(stderr,"ERROR: bad arg %s %s\n\n",argv[0],argv[1]);
             usage(argv0);
             exit(1);
         }
