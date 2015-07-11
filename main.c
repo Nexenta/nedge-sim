@@ -579,7 +579,7 @@ static void customize_config (int argc, const char ** argv)
         usage(argv0);
         exit(1);
     }
-    for (--argc,++argv;argc >= 2;argv+=2,argc-=2) {
+    for (--argc,++argv;argc >= 1;argv+=2,argc-=2) {
         if (0 == strcmp(*argv,"ngs"))
             config.n_negotiating_groups = atoi(argv[1]);
         else if (0 == strcmp(*argv,"targets_per"))
