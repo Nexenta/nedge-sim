@@ -236,15 +236,16 @@ static void log_event (FILE *f,const event_t *e)
             }
             break;
         case REP_CHUNK_PUT_ACCEPT_RECEIVED:
-            fprintf(f,
-                    "0x%lx,0x%lx,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,CP,%d,",
-                    e->tllist.time,e->create_time,
-                    u.cpa->cp,chunk_seq(u.cpa->cp),
-                    u.cpa->target_num);
-            fprintf(f,"%ld,%ld,targets,",u.cpa->window_start,u.cpa->window_lim);
-            for (i=0;i != N_REPLICAS;++i)
-                fprintf (f,",%d",u.cpa->accepted_target[i]);
-            fprintf(f,"\n");
+	    if (!config.terse) {
+		    fprintf(f, "0x%lx,0x%lx,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,CP,%d,",
+				    e->tllist.time,e->create_time,
+				    u.cpa->cp,chunk_seq(u.cpa->cp),
+				    u.cpa->target_num);
+		    fprintf(f,"%ld,%ld,targets,",u.cpa->window_start,u.cpa->window_lim);
+		    for (i=0;i != N_REPLICAS;++i)
+			    fprintf (f,",%d",u.cpa->accepted_target[i]);
+		    fprintf(f,"\n");
+	    }
             break;
         case REP_RENDEZVOUS_XFER_RECEIVED:
             if (!config.terse) {
@@ -631,20 +632,22 @@ int main(int argc, const char * argv[]) {
     
     log_config(log_f);
     if (config.do_replicast) {
-        printf("\n\nSimulating Replicast\n");
-        fprintf(log_f,"Simulating Replicast\n");
-        fprintf(bid_f,"Simulating Replicast\n");
+        printf("\nSimulating NGH/Replicast ***********************************************\n");
+        fprintf(log_f,"Simulating NGH/Replicast\n");
+        fprintf(bid_f,"Simulating NGH/Replicast\n");
 
         replicast = true;
         init_rep_targets(derived.n_targets);
         simulate(true);
         report_rep_chunk_distribution();
         release_rep_targets();
+        fprintf(log_f,"\n");
+        fprintf(bid_f,"\n");
     }
     if (config.do_ch) {
-        printf("\n\nSimulating Non-replicast\n");
-        fprintf(log_f,"Simulating Non-replicast\n");
-        fprintf(bid_f,"Simulating Non-replicast\n");
+        printf("\nSimulating CH/TCP ***********************************************\n");
+        fprintf(log_f,"Simulating CH/TCP\n");
+        fprintf(bid_f,"Simulating CH/TCP\n");
 
         init_seqnum();
         replicast = false;
