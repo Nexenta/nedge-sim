@@ -463,6 +463,8 @@ static void simulate (bool do_replicast)
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
     }
+    memset(&track,0,sizeof(trackers_t));
+    track.min_duration = ~0L;
 }
 
 #define ETH_SIZE_BYTES 9000

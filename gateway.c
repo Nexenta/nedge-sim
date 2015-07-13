@@ -620,7 +620,7 @@ void report_duration_stats (void)
                 m -= track.qdepth_tally[n];
                 if (m <=0) fprintf(log_f,"<-- Median");
             }
-            fprintf (log_f, "\n");
+            fprintf (log_f,"\n");
         }
         fprintf(log_f,"Mean Average: %3.2f\n",
                ((float)track.qdepth_total)/track.n_qdepth_tally);
@@ -639,9 +639,6 @@ void report_duration_stats (void)
     }
     fprintf(log_f,"Mean Average: %3.2f\n",
            ((float)track.write_dqepth_total)/track.n_write_qdepth_tally);
-
-    memset(&track,0,sizeof(trackers_t));
-    track.min_duration = ~0L;
 }
 
 unsigned chunk_seq (chunk_put_handle_t cph)
