@@ -613,31 +613,31 @@ void report_duration_stats (void)
                chunks_per_t);
         printf("Average gateway throughput %6.2fMB/s\n",mbs*1000/msecs);
     
-        printf("\nInbound queue depth distribution:\n");
+        fprintf(log_f,"\nInbound queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {
-            printf("([%d]:%d",n,track.qdepth_tally[n]);
+            fprintf(log_f,"([%d]:%d",n,track.qdepth_tally[n]);
             if (m > 0) {
                 m -= track.qdepth_tally[n];
-                if (m <=0) printf("<-- Median");
+                if (m <=0) fprintf(log_f,"<-- Median");
             }
             printf ("\n");
         }
-        printf("Mean Average: %3.2f\n",
+        fprintf(log_f,"Mean Average: %3.2f\n",
                ((float)track.qdepth_total)/track.n_qdepth_tally);
-        printf("\nWrite queue depth distribution:\n");
+        fprintf(log_f,"\nWrite queue depth distribution:\n");
         for (n=0,m = track.n_write_qdepth_tally/2;
              n <= track.max_write_qdepth;
              ++n)
         {
-            printf("[%d]:%d",n,track.write_qdepth_tally[n]);
+            fprintf(log_f,"[%d]:%d",n,track.write_qdepth_tally[n]);
             if (m > 0) {
                 m -= track.write_qdepth_tally[n];
-                if (m <=0) printf("<-- Median");
+                if (m <=0) fprintf(log_f,"<-- Median");
             }
-            printf ("\n");
+            fprintf (log_f,"\n");
         }
     }
-    printf("Mean Average: %3.2f\n",
+    fprintf(log_f,"Mean Average: %3.2f\n",
            ((float)track.write_dqepth_total)/track.n_write_qdepth_tally);
 
     memset(&track,0,sizeof(trackers_t));
