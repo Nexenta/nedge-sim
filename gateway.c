@@ -620,7 +620,7 @@ void report_duration_stats (void)
                 m -= track.qdepth_tally[n];
                 if (m <=0) fprintf(log_f,"<-- Median");
             }
-            printf ("\n");
+            fprintf (log_f, "\n");
         }
         fprintf(log_f,"Mean Average: %3.2f\n",
                ((float)track.qdepth_total)/track.n_qdepth_tally);
