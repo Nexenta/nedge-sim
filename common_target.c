@@ -48,28 +48,25 @@ void handle_disk_write_completion (const event_t *e)
     rpa.event.tllist.time = e->tllist.time + config.cluster_trip_time;
     rpa.event.type = REPLICA_PUT_ACK;
     rpa.cp = dwc->cp;
-
     assert(dwc->qptr);
     assert(*dwc->qptr);
-    
-    if (!config.terse) {
-        fprintf(log_f,"%s,DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
-                tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
-        fprintf(log_f,",write_q_depth,%d",dwc->write_qdepth);
-        fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
+    if (!track.drain) {
+        if (!config.terse) {
+            fprintf(log_f,
+                    "%s,DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
+                    tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
+            fprintf(log_f,",write_q_depth,%d",dwc->write_qdepth);
+            fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
+        }
+        if (--*dwc->qptr == 0) {
+            assert(track.n_active_targets);
+            --track.n_active_targets;
+        }
     }
-    if (--*dwc->qptr == 0)
-        --track.n_active_targets;
-    
-    signed int depth = *dwc->qptr;
-    assert(depth >= 0);
-    assert(depth < 999);
     rpa.target_num = dwc->target_num;
     assert(dwc->target_num < derived.n_targets);
     rpa.write_qdepth = dwc->write_qdepth;
-    
     ++track.n_writes_completed;
-    
     insert_event (rpa);
 }
 

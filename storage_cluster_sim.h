@@ -89,6 +89,7 @@ typedef struct trackers {
     unsigned n_write_qdepth_tally;
     unsigned long write_dqepth_total;
     unsigned n_active_targets;    // How many targets are currently writing?
+    bool     drain; // true when in drain mode
     unsigned mbz;
 } trackers_t;
 
