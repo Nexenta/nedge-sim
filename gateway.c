@@ -602,9 +602,9 @@ void report_duration_stats (void)
         chunks_per_t =
             (float)track.n_completions *
             ((float)config.n_replicas)/derived.n_targets;
-        printf("Average written per target: %6.2fMB   or %4.1f chunks\n",
+        printf("\nAverage written per target: %6.2fMB   or %4.1f chunk-replicas\n",
                mbs, chunks_per_t);
-        printf("Average target throughput:  %6.2fMB/s or %4.1f chunks/s\n",
+        printf("Average target throughput:  %6.2fMB/s or %4.1f chunk-replicas/s\n",
                mbs*1000/msecs, chunks_per_t*1000/msecs);
         mbs = ((float)total_write)/(1024*1024) / config.n_gateways;
         chunks_per_t = (float)track.n_completions *
