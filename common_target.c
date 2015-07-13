@@ -54,7 +54,8 @@ void handle_disk_write_completion (const event_t *e)
     
     fprintf(log_f,"DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
             rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
-    fprintf(log_f,".write_q_depth,%d\n",dwc->write_qdepth);
+    fprintf(log_f,",write_q_depth,%d",dwc->write_qdepth);
+    fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
     
     if (--*dwc->qptr == 0)
         --track.n_active_targets;
