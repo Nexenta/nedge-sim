@@ -67,8 +67,7 @@ void release_nonrep_targets (void)
 }
 
 static void credit_ongoing_receptions (nonrep_target_t *t,
-                                       unsigned current_num_receptions,
-                                       tick_t time_now)
+                                       unsigned current_num_receptions)
 {
     tllist_t *pnd;
     ongoing_reception_t *ort;
@@ -85,13 +84,14 @@ static void credit_ongoing_receptions (nonrep_target_t *t,
         
         assert(t->n_ongoing_receptions > 0);
         
-        if (time_now < ort->credited_thru)
+        if (now < ort->credited_thru)
             elapsed_time = 0L;
         else {
-            elapsed_time = time_now - ort->credited_thru;
-            ort->credited_thru = time_now;
+            elapsed_time = now - ort->credited_thru;
+            ort->credited_thru = now;
         }
-        credit = divup(elapsed_time,t->n_ongoing_receptions);
+        credit = elapsed_time / t->n_ongoing_receptions;
+        if (!credit) credit = 1;
         ort->credit += credit;
         if (current_num_receptions > ort->max_ongoing_rx)
             ort->max_ongoing_rx = current_num_receptions;
@@ -112,8 +112,8 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     assert(ort  &&  &ort->tllist != &t->orhead.tllist);
     
     trc.event.create_time = now;
-    assert(derived.chunk_udp_xmit_duration > ort->credit);
-    remaining_xfer = derived.chunk_udp_xmit_duration - ort->credit;
+    assert(derived.chunk_tcp_xmit_duration > ort->credit);
+    remaining_xfer = derived.chunk_tcp_xmit_duration - ort->credit;
     assert(t->n_ongoing_receptions);
     trc.event.tllist.time = now + remaining_xfer*t->n_ongoing_receptions;
     trc.event.type = TCP_RECEPTION_COMPLETE;
@@ -157,7 +157,7 @@ void handle_tcp_xmit_received (const event_t *e)
     fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
             e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
     if (t->n_ongoing_receptions) {
-        credit_ongoing_receptions(t,t->n_ongoing_receptions+1,e->tllist.time);
+        credit_ongoing_receptions(t,t->n_ongoing_receptions+1);
         fprintf(log_f,",Prior CPs");
         for (tp = t->orhead.tllist.next; tp != &t->orhead.tllist; tp = tp->next) {
             p = (ongoing_reception_t *)tp;
@@ -206,13 +206,13 @@ void handle_tcp_reception_complete (const event_t *e)
     dws.target_num = trc->target_num;
     
     assert(t->n_ongoing_receptions);
-    credit_ongoing_receptions(t,t->n_ongoing_receptions,e->tllist.time);
+    credit_ongoing_receptions(t,t->n_ongoing_receptions);
 
     for (ort = (ongoing_reception_t *)t->orhead.tllist.next,n=0;
          &ort->tllist != &t->orhead.tllist;
          ort = ort_next,++n)
     {
-        if (ort->credit < derived.chunk_udp_xmit_duration) {
+        if (ort->credit < derived.chunk_tcp_xmit_duration) {
             schedule_tcp_reception_complete (trc->target_num,ort->cp);
             break;
         }
