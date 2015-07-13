@@ -42,14 +42,13 @@ extern sim_config_t config;
 
 // defaults
 
-#define CLUSTER_TRIP_TIME       3500    // aprox 350 nanoseconds
-#define N_NEGOTIATING_GROUPS 256
+#define CLUSTER_TRIP_TIME       6500    // aprox 350 nanoseconds
+#define N_NEGOTIATING_GROUPS 50
 #define N_TARGETS_PER_NG 9
-#define MBS_SEC_PER_TARGET_DRIVE 500
+#define MBS_SEC_PER_TARGET_DRIVE 400
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
-#define N_GATEWAYS 9
-#define PER_GATEWAY_LIMIT 50
+#define N_GATEWAYS 40
 #define PENALTY 1000
 
 typedef struct sim_derived_config {
