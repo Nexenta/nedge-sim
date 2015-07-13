@@ -42,14 +42,16 @@ extern sim_config_t config;
 
 // defaults
 
-#define CLUSTER_TRIP_TIME       6500    // aprox 350 nanoseconds
+#define CLUSTER_TRIP_TIME       10000    // aprox 1 microsecond
 #define N_NEGOTIATING_GROUPS 50
 #define N_TARGETS_PER_NG 9
 #define MBS_SEC_PER_TARGET_DRIVE 400
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
 #define N_GATEWAYS 40
-#define PENALTY 1000
+#define PENALTY 1000                // approx .1 microsecond for replicast
+                                    // packet processing above TCP connection
+                                    // establishment overhead.
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.
