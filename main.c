@@ -493,7 +493,7 @@ static void derive_config (void)
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
     derived.ticks_per_chunk =
         derived.chunk_disk_write_duration * config.n_replicas;;
-    derived.ticks_per_chunk /= derived.n_targets;
+    derived.ticks_per_chunk = divup(derived.ticks_per_chunk,derived.n_targets);
     derived.ticks_per_chunk = derived.ticks_per_chunk*config.utilization/100L;
 }
 
@@ -561,6 +561,7 @@ static void log_config (FILE *f)
     fprintf(f,"config.n_negotiating_groups:%d\n",config.n_negotiating_groups);
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
+    fprintf(f,"derived.n_targets:%d\n",derived.n_targets);
     fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
     fprintf(f,"config.utlization:%d%%\n",config.utilization);
