@@ -453,6 +453,7 @@ static void simulate (bool do_replicast)
         tllist_verify((const tllist_t *)&ehead);
     }
     report_duration_stats();
+    track.drain = true;
     while (e != (const event_t *)&ehead) {
         assert(e->sig == 0x1234);
         assert (e != &ehead);
