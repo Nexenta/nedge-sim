@@ -583,29 +583,32 @@ void report_duration_stats (void)
 // report and clear the accumulated duratin and qdepth stats
 
 {
-    float avg,avg_x,max_x,mbs,msecs;
+    float avg_ticks,min_x,max_x,mbs,msecs,chunks_per_t;
     signed long m;
     unsigned long total_write;
     unsigned n;
     
+    const float ticks_per_ms = 10L*1024*1024*1024/1000;
+
     if (track.n_completions) {
-        msecs = ((double_t)now)/(10L*1024*1024*1024/1000);
-        printf("n_initiated %lu n_completions %lu total time %6.3f msecs\n",
+        msecs = ((double_t)now)/ticks_per_ms;
+        printf("\nTotal unique chunks: initiated %lu completed %lu execution-time %.1f ms\n",
                track.n_initiated,track.n_completions,msecs);
-        avg = ((float)track.total_duration)/track.n_completions;
-        avg_x = avg/track.min_duration;
-        max_x = ((float)track.max_duration)/track.min_duration;
-        printf("min msecs %3.3f average %3.3f (x%f) max %3.3f (x%f)\n",
-               ((float)track.min_duration)/(10L*1024*1024*1024/1000),
-               avg/(10L*1024*1024*1024/1000),avg_x,
-               ((float)track.max_duration)/(10L*1024*1024*1024/1000),max_x);
+        avg_ticks = (float)now/(float)track.n_completions;
+        min_x = (float)track.min_duration/avg_ticks;
+        max_x = ((float)track.max_duration)/avg_ticks;
+        printf("Chunk write latency (ms): min %3.2f (%.2f * avg) average %f max %3.2f (%.2f * avg)\n",
+               ((float)track.min_duration)/ticks_per_ms,min_x,
+               avg_ticks/ticks_per_ms,
+               ((float)track.max_duration)/ticks_per_ms,max_x);
         total_write = (unsigned long)track.n_completions * config.chunk_size *
             config.n_replicas;
         mbs = ((float)total_write)/(1024*1024) / derived.n_targets;
-        printf("Average Written per target %6.3f MBs\n",mbs);
-        printf("MB/sec Rate per target %6.3f\n",mbs*1000/msecs);
+	chunks_per_t = (float)track.n_completions * config.n_replicas/derived.n_targets;
+        printf("Average written per target: %6.2fMB   or %4.1f chunks\n",mbs, chunks_per_t);
+        printf("Average target throughput:  %6.2fMB/s or %4.1f chunks/s\n",mbs*1000/msecs, chunks_per_t*1000/msecs);
     
-        printf("\nInbound Queue depth distribution:\n");
+        printf("\nInbound queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {
             printf("([%d]:%d",n,track.qdepth_tally[n]);
             if (m > 0) {
@@ -614,9 +617,9 @@ void report_duration_stats (void)
             }
             printf ("\n");
         }
-        printf("Mean Average: %3.3f\n",
+        printf("Mean Average: %3.2f\n",
                ((float)track.qdepth_total)/track.n_qdepth_tally);
-        printf("\nWrite Queue Depth distribution:\n");
+        printf("\nWrite queue depth distribution:\n");
         for (n=0,m = track.n_write_qdepth_tally/2;
              n <= track.max_write_qdepth;
              ++n)
@@ -629,8 +632,9 @@ void report_duration_stats (void)
             printf ("\n");
         }
     }
-    printf("Mean Average: %3.3f\n",
+    printf("Mean Average: %3.2f\n",
            ((float)track.write_dqepth_total)/track.n_write_qdepth_tally);
+
     memset(&track,0,sizeof(trackers_t));
     track.min_duration = ~0L;
 }
