@@ -52,7 +52,6 @@ sim_config_t config = {
     .n_replicas = N_REPLICAS,
     .chunk_size = CHUNK_SIZE,
     .n_gateways = N_GATEWAYS,
-    .utilization = 66,
     .sim_duration = TICKS_PER_SECOND/100,
     .seed = 0x12345678,
     
@@ -295,16 +294,16 @@ static void log_event (FILE *f,const event_t *e)
             }
             break;
         case REPLICA_PUT_ACK:
-            fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,0x%lx,%d,tgt,%d",
+            fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,CP,0x%lx,%d,tgt,%d",
                     e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
             fprintf(f,",depth,%d\n",u.rpack->write_qdepth);
             break;
         case CHUNK_PUT_ACK:
-	    assert(u.cpack->write_qdepth >= 0);
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,0x%lx,depth,%d\n",
+            assert(u.cpack->write_qdepth >= 0);
+            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,CP,0x%lx,%d,depth,%d\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
-                    u.cpack->write_qdepth);
+                    chunk_seq(u.cpack->cp),u.cpack->write_qdepth);
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -445,7 +444,7 @@ static void simulate (bool do_replicast)
     {
         tenths_done = (unsigned)(now*10L/config.sim_duration);
         if (tenths_done != prior_tenths_done) {
-            fprintf(stderr,"%d tenths done\n",tenths_done);
+            fprintf(stderr,"%d/10 done\n",tenths_done);
             prior_tenths_done = tenths_done;
         }
         if (log_f) log_event(log_f,e);
@@ -491,10 +490,6 @@ static void derive_config (void)
     
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
-    derived.ticks_per_chunk =
-        derived.chunk_disk_write_duration * config.n_replicas;;
-    derived.ticks_per_chunk = divup(derived.ticks_per_chunk,derived.n_targets);
-    derived.ticks_per_chunk = derived.ticks_per_chunk*config.utilization/100L;
 }
 
 static FILE *open_outf (const char *type)
@@ -536,7 +531,6 @@ static void usage (const char *progname) {
     fprintf(stderr," [terse]");
     fprintf(stderr," penalty <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>");
-    fprintf(stderr," [utilization <%%>]\n");
     fprintf(stderr,"\nOr %s help\n",progname);
     fprintf(stderr,"    to print this.\n");
 
@@ -564,7 +558,6 @@ static void log_config (FILE *f)
     fprintf(f,"derived.n_targets:%d\n",derived.n_targets);
     fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
-    fprintf(f,"config.utlization:%d%%\n",config.utilization);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
@@ -598,8 +591,6 @@ static void customize_config (int argc, const char ** argv)
             config.mbs_sec_per_target_drive = atoi(argv[1]);
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"utilization"))
-            config.utilization = atoi(argv[1]);
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;

@@ -38,11 +38,11 @@ void handle_disk_write_completion (const event_t *e)
 //
 {
     disk_write_completion_t *dwc = (disk_write_completion_t *)e;
+    char *tag = replicast ? "replicast" : "non";
     replica_put_ack_t rpa;
     assert(e);
     assert(chunk_seq(dwc->cp));
     assert(dwc->write_qdepth >= 0);
-    assert(dwc->write_qdepth < 999);
 
     rpa.event.create_time = e->tllist.time;
     rpa.event.tllist.time = e->tllist.time + config.cluster_trip_time;
@@ -52,11 +52,12 @@ void handle_disk_write_completion (const event_t *e)
     assert(dwc->qptr);
     assert(*dwc->qptr);
     
-    fprintf(log_f,"DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
-            rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
-    fprintf(log_f,",write_q_depth,%d",dwc->write_qdepth);
-    fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
-    
+    if (!config.terse) {
+        fprintf(log_f,"%s,DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
+                tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
+        fprintf(log_f,",write_q_depth,%d",dwc->write_qdepth);
+        fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
+    }
     if (--*dwc->qptr == 0)
         --track.n_active_targets;
     

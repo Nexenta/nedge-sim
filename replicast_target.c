@@ -52,6 +52,8 @@ void release_rep_targets (void)
     rept = (rep_target_t *)0;
 }
 
+#define WRITE_QUEUE_THRESH 10
+
 static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
                       tick_t *start,
@@ -76,6 +78,7 @@ static void make_bid (unsigned target_num,
     rep_target_t *tp = rept + target_num;
     tick_t s;
     tick_t estimated_write_start;
+    tick_t disk_delay;
 
     assert(start);
     assert(lim);
@@ -88,6 +91,13 @@ static void make_bid (unsigned target_num,
     *start = s = now + 2*config.cluster_trip_time +
         config.replicast_packet_processing_penalty;;
     *lim = s + derived.chunk_udp_xmit_duration*3;
+
+    // adjust if write_queue is deep
+    if (tp->write_queue_depth >= WRITE_QUEUE_THRESH) {
+        disk_delay = tp->write_queue_depth*derived.chunk_disk_write_duration;
+        *start += disk_delay;
+        *lim += disk_delay;
+    }
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next;
          p != &tp->ir_head;

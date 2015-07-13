@@ -127,27 +127,20 @@ static void select_nonrep_targets (chunkput_t *c)
 }
 
 static void insert_next_chunk_put_ready (const chunkput_t *cp,
-                                         tick_t earliest_time)
+                                         tick_t insert_time)
 
 // Generate thenext Chunk Put Ready event
 
 {
     chunk_put_ready_t cpr;
-    tick_t  pace_time = cp->seqnum*derived.ticks_per_chunk;
-    tick_t insert_time;
     
     assert(cp);
     
     cpr.event.create_time = now;
-    cpr.event.tllist.time = earliest_time;
+    cpr.event.tllist.time = insert_time;
     
-    insert_time =  (earliest_time < pace_time) ? pace_time : earliest_time;
     if (insert_time <= now) insert_time = now + 1;
     
-    if (insert_time != earliest_time) {
-        fprintf(log_f,"Chunk,0x%p,%d,InsertionTimeAdjusted,%lu,%lu\n",
-                cp,cp->seqnum,earliest_time,insert_time);
-    }
     cpr.event.type = CHUNK_PUT_READY;
     cpr.cp = (chunk_put_handle_t)cp;
         
@@ -500,9 +493,7 @@ void handle_replica_put_ack (const event_t *e)
     assert(cp->replicas_unacked);
     assert(cp->replicas_unacked <= config.n_replicas);
     
-    assert(cp->write_qdepth <= MAX_WRITE_QDEPTH);
     assert(rpa->write_qdepth >= 0);
-    assert(rpa->write_qdepth < 999);
     assert(cp->write_qdepth >= 0);
     if (rpa->write_qdepth > cp->write_qdepth)
         cp->write_qdepth = rpa->write_qdepth;
@@ -533,7 +524,7 @@ void handle_chunk_put_ack (const event_t *e)
     
     assert(e);
     assert(cpa->write_qdepth >= 0);
-    assert(cpa->write_qdepth < 999);
+
     cp = (chunkput_t *)cpa->cp;
     cp->done = e->tllist.time;
     assert(cp->seqnum);
@@ -541,22 +532,24 @@ void handle_chunk_put_ack (const event_t *e)
     duration = cp->done - cp->started;
 
     assert(cp->write_qdepth >= 0);
-    assert(cp->write_qdepth < 999);
 
-    fprintf(log_f,
-            "0x%lx,%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
-            e->tllist.time,tag,cp->seqnum,
-            ((float)duration)/(10*1024*1024),cp->write_qdepth);
+    if (!config.terse) {
+        fprintf(log_f,
+                "0x%lx,%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
+                e->tllist.time,tag,cp->seqnum,
+                ((float)duration)/(10*1024*1024),cp->write_qdepth);
+    }
     if (duration < track.min_duration) track.min_duration = duration;
     if (duration > track.max_duration) track.max_duration = duration;
     track.total_duration += duration;
     ++track.n_completions;
-    fprintf(log_f,"chunk_ack:n_completions,%lu,n_initiated,%lu",
-            track.n_completions,track.n_initiated);
     n_pending = track.n_initiated - track.n_completions;
-    fprintf(log_f,",pending,%lu,per target %04.3f\n",
+    if (!config.terse) {
+        fprintf(log_f,"%s,chunk_ack:n_completions,%lu,n_initiated,%lu",
+                tag,track.n_completions,track.n_initiated);
+        fprintf(log_f,",pending,%lu,per target %04.3f\n",
             n_pending,((float)n_pending)/derived.n_targets);
-
+    }
     if (cp->write_qdepth > MAX_WRITE_QDEPTH)
         cp->write_qdepth = MAX_WRITE_QDEPTH;
     if (!replicast) {
