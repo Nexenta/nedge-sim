@@ -588,25 +588,37 @@ void report_duration_stats (void)
     unsigned long total_write;
     unsigned n;
     
-    const float ticks_per_ms = 10L*1024*1024*1024/1000;
+    const float ticks_per_ms = 10L*1024*1024*1024/(float)1000;
 
     if (track.n_completions) {
         msecs = ((double_t)now)/ticks_per_ms;
-        printf("\nTotal unique chunks: initiated %lu completed %lu execution-time %.1f ms\n",
-               track.n_initiated,track.n_completions,msecs);
-        avg_ticks = (float)now/(float)track.n_completions;
+        printf("\nTotal unique chunks: initiated %lu completed %lu ",
+               track.n_initiated,track.n_completions);
+        printf("execution-time %.1f ms\n",msecs);
+        avg_ticks = (float)track.total_duration/(float)track.n_completions;
         min_x = (float)track.min_duration/avg_ticks;
         max_x = ((float)track.max_duration)/avg_ticks;
-        printf("Chunk write latency (ms): min %3.2f (%.2f * avg) average %f max %3.2f (%.2f * avg)\n",
+        printf("Chunk write latency (ms): min %3.2f (%.2f * avg) average %f ",
                ((float)track.min_duration)/ticks_per_ms,min_x,
-               avg_ticks/ticks_per_ms,
+               avg_ticks/ticks_per_ms);
+        printf("max %3.2f (%.2f * avg)\n",
                ((float)track.max_duration)/ticks_per_ms,max_x);
         total_write = (unsigned long)track.n_completions * config.chunk_size *
             config.n_replicas;
         mbs = ((float)total_write)/(1024*1024) / derived.n_targets;
-	chunks_per_t = (float)track.n_completions * config.n_replicas/derived.n_targets;
-        printf("Average written per target: %6.2fMB   or %4.1f chunks\n",mbs, chunks_per_t);
-        printf("Average target throughput:  %6.2fMB/s or %4.1f chunks/s\n",mbs*1000/msecs, chunks_per_t*1000/msecs);
+        chunks_per_t =
+            (float)track.n_completions *
+            ((float)config.n_replicas)/derived.n_targets;
+        printf("Average written per target: %6.2fMB   or %4.1f chunks\n",
+               mbs, chunks_per_t);
+        printf("Average target throughput:  %6.2fMB/s or %4.1f chunks/s\n",
+               mbs*1000/msecs, chunks_per_t*1000/msecs);
+        mbs = ((float)total_write)/(1024*1024) / config.n_gateways;
+        chunks_per_t = (float)track.n_completions *
+                        ((float)config.n_replicas)/config.n_gateways;
+        printf("Average gateway sent:%6.2fMB or %4.1f chunks\n",mbs,
+               chunks_per_t);
+        printf("Average gateway throughput %6.2fMB/s\n",mbs*1000/msecs);
     
         printf("\nInbound queue depth distribution:\n");
         for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {
