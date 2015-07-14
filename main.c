@@ -327,11 +327,15 @@ static void track_report (void)
 {
     const char *tag = replicast ? "replicast" : "non";
     
-    unsigned now_millis = divup(now, TICKS_PER_SECOND/1000);
-    unsigned completed_since_prev_report = track.n_completions - track_prev.n_completions;
-    unsigned active_target_pct = divup(track.n_active_targets * 100, derived.n_targets);
+    unsigned now_millis = (unsigned)divup(now, TICKS_PER_SECOND/1000);
+    unsigned completed_since_prev_report = (unsigned)
+        (track.n_completions - track_prev.n_completions);
+    unsigned active_target_pct =
+        divup(track.n_active_targets * 100, derived.n_targets);
 
-    fprintf(log_f,"%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u\n",tag,now,now_millis,
+    fprintf(log_f,
+            "%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u\n",
+            tag,now,now_millis,
             track.n_initiated,track.n_writes_initiated,track.n_writes_completed,
             track.n_completions,completed_since_prev_report,
 	    track.n_active_targets, active_target_pct);
@@ -390,8 +394,9 @@ static void process_event (const event_t *e)
         case TRACK_SAMPLE:
             track_report();
             if (now < config.sim_duration) {
-                track_it.event.create_time = now;
-                track_it.event.tllist.time = now + TICKS_PER_SECOND / 1000;
+                track_it.event.create_time = e->tllist.time;
+                track_it.event.tllist.time = e->tllist.time +
+                    TICKS_PER_SECOND / 1000;
                 track_it.event.type = TRACK_SAMPLE;
                 insert_event(track_it);
             }
