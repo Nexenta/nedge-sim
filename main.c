@@ -72,6 +72,7 @@ static event_t ehead = { // The list of events for gateways and targets
 };
 
 trackers_t track = {.min_duration = ~0L};
+static trackers_t track_prev = { 0 };
 
 static unsigned tllist_len (const tllist_t *head)
 {
@@ -326,9 +327,15 @@ static void track_report (void)
 {
     const char *tag = replicast ? "replicast" : "non";
     
-    fprintf(log_f,"%s,track@,0x%lx,%lu,%lu,%lu,%lu,active-targets,%u\n",tag,now,
-            track.n_initiated,track.n_writes_jnitiated,track.n_writes_completed,
-            track.n_completions,track.n_active_targets);
+    unsigned now_millis = divup(now, TICKS_PER_SECOND/1000);
+    unsigned completed_since_prev_report = track.n_completions - track_prev.n_completions;
+
+    fprintf(log_f,"%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u\n",tag,now,now_millis,
+            track.n_initiated,track.n_writes_initiated,track.n_writes_completed,
+            track.n_completions,completed_since_prev_report,
+	    track.n_active_targets);
+
+    memcpy(&track_prev, &track, sizeof(track));
 }
 
 static void process_event (const event_t *e)
@@ -431,7 +438,7 @@ static void simulate (bool do_replicast)
     replicast = do_replicast;
     srand(config.seed+1);
 
-    printf("\n%d Gateways putting %dKB Chunks.\n",config.n_gateways,
+    printf("\n%d Gateways putting %dKB Chunks\n",config.n_gateways,
            config.chunk_size/1024);
     e = (const event_t *)ehead.tllist.next;
     
@@ -444,7 +451,7 @@ static void simulate (bool do_replicast)
     {
         tenths_done = (unsigned)(now*10L/config.sim_duration);
         if (tenths_done != prior_tenths_done) {
-            fprintf(stderr,"\r%d/10 done",tenths_done);
+            printf("\r%d/10 done",tenths_done);
             prior_tenths_done = tenths_done;
         }
         if (log_f) log_event(log_f,e);
@@ -464,6 +471,7 @@ static void simulate (bool do_replicast)
         e = (const event_t *)ehead.tllist.next;
     }
     memset(&track,0,sizeof(trackers_t));
+    memset(&track_prev,0,sizeof(trackers_t));
     track.min_duration = ~0L;
 }
 

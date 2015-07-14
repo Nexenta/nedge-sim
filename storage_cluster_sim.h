@@ -77,7 +77,7 @@ typedef struct trackers {
     tick_t max_duration;
     tick_t total_duration;
     unsigned long n_initiated;
-    unsigned long n_writes_jnitiated;
+    unsigned long n_writes_initiated;
     unsigned long n_writes_completed;
     unsigned long n_completions;
     unsigned qdepth_tally[MAX_QDEPTH+1];

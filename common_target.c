@@ -25,7 +25,7 @@ void handle_disk_write_start (const event_t *e)
     dwc.target_num = dws->target_num;
     dwc.write_qdepth = dws->write_qdepth;
     dwc.qptr = dws->qptr;
-    ++track.n_writes_jnitiated;
+    ++track.n_writes_initiated;
     insert_event(dwc);
 }
 
