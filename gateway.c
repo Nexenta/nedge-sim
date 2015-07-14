@@ -39,8 +39,8 @@
 //      achieve this.
 
 #define MINIMUM_TCPV6_BYTES 74
-#define TCP_CHUNK_SETUP_BYTES (4*MINIMUM_TCPV6_BYTES+200)
-    // 4 packets for TCP connectino setup plus minimal pre-transfer data
+#define TCP_CHUNK_SETUP_BYTES (3*MINIMUM_TCPV6_BYTES+200)
+    // 3 packets for TCP connectino setup plus minimal pre-transfer data
     // The cluster_trip_time must still be added to this.
 
 
@@ -80,7 +80,7 @@ static void next_tcp_replica_xmit (chunkput_t *cp,tick_t time_now)
     
     if (cp->replicas_unacked) {
         txr.event.create_time = time_now;
-        txr.event.tllist.time = time_now + config.cluster_trip_time*4 +
+        txr.event.tllist.time = time_now + config.cluster_trip_time*3 +
                                 TCP_CHUNK_SETUP_BYTES*8;
         txr.event.type = TCP_XMIT_RECEIVED;
         txr.cp = (chunk_put_handle_t)cp;
@@ -470,7 +470,7 @@ void handle_tcp_reception_ack (const event_t *e)
     if (tra->max_ongoing_rx > cp->u.nonrep.max_ongoing_rx)
         cp->u.nonrep.max_ongoing_rx  = tra->max_ongoing_rx;
     next_tcp_time = e->tllist.time;
-    next_tcp_time -= 2*config.cluster_trip_time;
+    next_tcp_time -= 3*config.cluster_trip_time;
     if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->u.nonrep.acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
