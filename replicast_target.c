@@ -258,7 +258,7 @@ void handle_rep_chunk_put_accept_received (const event_t *e)
     tp = rept + cpa->target_num;
     ir = ir_find_by_cp (tp,cpa->cp);
     assert(ir);
-    tp = rept + cpa->target_num;
+
     if (target_in_accepted_list(cpa->target_num,cpa->accepted_target)) {
         ir->tllist.time = cpa->window_start;
         ir->lim = cpa->window_lim;
