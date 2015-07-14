@@ -319,11 +319,13 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
     assert (nbids <= config.n_targets_per_ng);
     
     qsort(bids,nbids,sizeof(bid_t),bid_compare);
-    for (n = 0; n != nbids; ++n) {
-        fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Target:%d",
-                c->seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
-                bids[n].target_num);
-        fprintf(bid_f,",EstAck,0x%lx\n",bids[n].estimated_ack);
+    if (!config.terse) {
+        for (n = 0; n != nbids; ++n) {
+            fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Target:%d",
+                    c->seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
+                    bids[n].target_num);
+            fprintf(bid_f,",EstAck,0x%lx\n",bids[n].estimated_ack);
+        }
     }
     for (n = 0; n + config.n_replicas <= nbids; ++n) {
         if (acceptable_bid_set(bids+n,&start,&lim)) {
