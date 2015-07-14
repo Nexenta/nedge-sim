@@ -92,9 +92,10 @@ static void make_bid (unsigned target_num,
         config.replicast_packet_processing_penalty;;
     *lim = s + derived.chunk_udp_xmit_duration*3;
 
-    // adjust if write_queue is deep
-    if (tp->write_queue_depth >= WRITE_QUEUE_THRESH) {
-        disk_delay = tp->write_queue_depth*derived.chunk_disk_write_duration;
+    // adjust based on write queue, no point receiving data too long before
+    // the target will be able to write it.
+    if (tp->write_queue_depth > 2) {
+        disk_delay = (tp->write_queue_depth-2)*derived.chunk_disk_write_duration;
         *start += disk_delay;
         *lim += disk_delay;
     }
