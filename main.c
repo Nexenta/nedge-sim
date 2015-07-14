@@ -329,11 +329,12 @@ static void track_report (void)
     
     unsigned now_millis = divup(now, TICKS_PER_SECOND/1000);
     unsigned completed_since_prev_report = track.n_completions - track_prev.n_completions;
+    unsigned active_target_pct = divup(track.n_active_targets * 100, derived.n_targets);
 
-    fprintf(log_f,"%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u\n",tag,now,now_millis,
+    fprintf(log_f,"%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u\n",tag,now,now_millis,
             track.n_initiated,track.n_writes_initiated,track.n_writes_completed,
             track.n_completions,completed_since_prev_report,
-	    track.n_active_targets);
+	    track.n_active_targets, active_target_pct);
 
     memcpy(&track_prev, &track, sizeof(track));
 }
