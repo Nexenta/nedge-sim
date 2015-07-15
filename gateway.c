@@ -292,6 +292,7 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
     // find how many are a good match
     for (n = 0, b = bids + m, b_lim = bids + nbids; b != b_lim; ++n,++b) {
         assert(b->start < b->lim);
+        assert(b->start > now);
         
         if (b->start > window_lim) break;
         if (n >= config.n_replicas &&
@@ -307,7 +308,7 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
         bids[m].start = window_start;
 
     assert (b0target == bids[0].target_num);
-    return n+1;
+    return n;
 }
 
 static  void select_replicast_targets (chunk_put_handle_t cp,
