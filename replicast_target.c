@@ -79,6 +79,7 @@ static void make_bid (unsigned target_num,
     tick_t s;
     tick_t estimated_write_start;
     tick_t disk_delay;
+    bool delayed;
 
     assert(start);
     assert(lim);
@@ -100,26 +101,23 @@ static void make_bid (unsigned target_num,
         *lim += disk_delay;
     }
     
-    for (p = (inbound_reservation_t *)tp->ir_head.tllist.next;
+    for (p = (inbound_reservation_t *)tp->ir_head.tllist.next, delayed = false;
          p != &tp->ir_head;
          p = (inbound_reservation_t *)p->tllist.next)
     {
+
         if (p->lim < *start) continue; // is is over before this bid starts
         if (p->tllist.time > *lim) break;  // remaianing reservations are later
-        if (!p->accepted) {
-            static unsigned n_tentative_conficts = 0;
-            
-            ++n_tentative_conficts;
-        }
-        else {
-            static unsigned n_accepted_conflicts = 0;
-            
-            ++n_accepted_conflicts;
-        }
+
         // adjust guess to be after inbound_reservation p
         *start = p->lim + 1;
-        *lim = *start + derived.chunk_udp_xmit_duration*2;
+        *lim = *start + derived.chunk_udp_xmit_duration*3;
+        delayed = true;
     }
+    ++track.n_reservations;
+    if (delayed)
+        ++track.n_reservation_conflicts;
+
     estimated_write_start = *lim;
     if (tp->last_disk_write_completion > estimated_write_start)
         estimated_write_start = tp->last_disk_write_completion;
@@ -137,7 +135,7 @@ static void make_bid (unsigned target_num,
     tllist_insert ((tllist_t *)insert_after,(tllist_t *)ir);
     assert(qdepth);
     *qdepth = tp->ir_queue_depth++;
-    assert(tp->ir_queue_depth < 999);  // TODO
+    assert(tp->ir_queue_depth < 999);
     ++total_reservations;
 }
 

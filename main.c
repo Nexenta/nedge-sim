@@ -334,11 +334,19 @@ static void track_report (void)
         divup(track.n_active_targets * 100, derived.n_targets);
 
     fprintf(log_f,
-            "%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u\n",
+            "%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u",
             tag,now,now_millis,
             track.n_initiated,track.n_writes_initiated,track.n_writes_completed,
             track.n_completions,completed_since_prev_report,
 	    track.n_active_targets, active_target_pct);
+    if (!replicast)
+        fprintf(log_f,"\n");
+    else {
+        float pc =
+            ((float)track.n_reservation_conflicts) * 100 / track.n_reservations;
+       
+        fprintf(log_f,"inbound_reservation_conflicts,%2.2f%%\n",pc);
+    }
 
     memcpy(&track_prev, &track, sizeof(track));
 }
