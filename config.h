@@ -35,6 +35,7 @@ typedef struct sim_config {
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
+    unsigned bid_window_multiplier; // multiplier for offered bid window width
     bool terse;                     // if true, omit many events from log_f
 } sim_config_t;
 
@@ -52,6 +53,8 @@ extern sim_config_t config;
 #define PENALTY 1000                // approx .1 microsecond for replicast
                                     // packet processing above TCP connection
                                     // establishment overhead.
+#define BID_WINDOW_MULTIPLIER    4  // multiplier for offered bid to allow
+                                    // gateway to find overlapping windows.
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.

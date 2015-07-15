@@ -78,7 +78,6 @@ static void make_bid (unsigned target_num,
     rep_target_t *tp = rept + target_num;
     tick_t s;
     tick_t estimated_write_start;
-    tick_t disk_delay;
     bool delayed;
 
     assert(start);
@@ -91,15 +90,8 @@ static void make_bid (unsigned target_num,
     // make initial guess
     *start = s = now + 2*config.cluster_trip_time +
         config.replicast_packet_processing_penalty;;
-    *lim = s + derived.chunk_udp_xmit_duration*3;
-
-    // adjust based on write queue, no point receiving data too long before
-    // the target will be able to write it.
-    if (tp->write_queue_depth > 2) {
-        disk_delay = (tp->write_queue_depth-2)*derived.chunk_disk_write_duration;
-        *start += disk_delay;
-        *lim += disk_delay;
-    }
+    *lim = s + derived.chunk_udp_xmit_duration*config.bid_window_multiplier;
+    assert(*start < *lim);
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next, delayed = false;
          p != &tp->ir_head;
@@ -111,9 +103,11 @@ static void make_bid (unsigned target_num,
 
         // adjust guess to be after inbound_reservation p
         *start = p->lim + 1;
-        *lim = *start + derived.chunk_udp_xmit_duration*3;
+        *lim = *start +
+            derived.chunk_udp_xmit_duration*config.bid_window_multiplier;
         delayed = true;
     }
+    assert(*start < *lim);
     ++track.n_reservations;
     if (delayed)
         ++track.n_reservation_conflicts;
@@ -128,7 +122,6 @@ static void make_bid (unsigned target_num,
     ir->lim = *lim;
     ir->cp = cp;
     assert(chunk_seq(cp));
-    assert(ir->tllist.time < ir->lim);
     
     insert_after =
         (inbound_reservation_t *)tllist_find ((tllist_t *)&tp->ir_head,*start);

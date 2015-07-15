@@ -249,7 +249,7 @@ static int estimate_compare (const void *a,const void *b)
     : 1;
 }
 
-static unsigned acceptable_bid_set (bid_t *bids,unsigned n_compare)
+static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
 
 // are there at least config.n_replicas bids that overlap with the
 // bid in bid[0] for at least derived.chunk_udp_xmit_duration?
@@ -267,12 +267,29 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned n_compare)
 
 {
     bid_t *b;
-    tick_t window_start = bids[0].start;
-    tick_t window_lim = bids[0].lim;
-    tick_t window_len;
+    bid_t *b_lim = bids + nbids;
+    tick_t window_start;
+    tick_t window_lim;
+    tick_t window_len,span,best_span;
     unsigned n,m;
+    unsigned b0target = bids[0].target_num;
+    unsigned delta = config.n_replicas - 1;
     
-    for (n = 1,b = bids+1; b < bids+n_compare;++b,++n) {
+    assert(best);
+ 
+    // find the starting bid with the minimum delta to the +n_replicas bid
+    for (m = n = 0,best_span = ~0L;n + delta < nbids; ++n) {
+        span = bids[n+delta].start - bids[n].start;
+        if (span < best_span) {
+            m = n;
+            best_span = span;
+        }
+    }
+    *best = m;
+    window_start = bids[m].start;
+    window_lim = bids[m].lim;
+    // find how many are a good match
+    for (n = 0, b = bids + m, b_lim = bids + nbids; b != b_lim; ++n,++b) {
         assert(b->start < b->lim);
         
         if (b->start > window_lim) break;
@@ -289,6 +306,7 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned n_compare)
     for (m = 0; m <= n; ++m)
         bids[m].start = window_start;
 
+    assert (b0target == bids[0].target_num);
     return n+1;
 }
 
@@ -306,10 +324,11 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
 // Set the accepted window is bids[0]
 
 {
-    unsigned n,m,n_compare;
+    unsigned n,m;
     tick_t  start,lim;
     const chunkput_t *c = (const chunkput_t *)cp;
     unsigned max_qdepth;
+    unsigned bids_base;
     bid_t *b;
     
     assert (nbids <= config.n_targets_per_ng);
@@ -320,23 +339,24 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
             fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Tgt,%d",
                     c->seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
                     bids[n].target_num);
-            fprintf(bid_f,",EstAck,0x%lx\n",bids[n].estimated_ack);
+            fprintf(bid_f,",EstAck,%ld\n",bids[n].estimated_ack);
         }
     }
-    for (b = bids,n = 0, n_compare = config.n_targets_per_ng;
-         !(m= acceptable_bid_set(b,n_compare));
-         ++b, ++n, --n_compare)
-        assert (n_compare >= config.n_replicas);
+    m = acceptable_bid_set(bids,nbids,&bids_base);
+    assert(m);
     // Because every member of the negotiating group MUST bid we should
     // always find an acceptable set. A real storage cluster would re-bid
     // starting here to deal with temporary disruptions caused by temporary
     // loss of network connectivity.
-    assert(m);
+
+    b = bids + bids_base;
     
     if (m > config.n_replicas)
         qsort(b,m,sizeof(bid_t),estimate_compare);
     *window_start = start = b->start;
+    assert (start > now);
     *window_lim = lim = start + derived.chunk_udp_xmit_duration;
+    assert (lim > start);
     
     fprintf(bid_f,"BIDS:CP #,%d,Now,%ld,Accepted,%ld,%ld,TARGET",
             c->seqnum,now,start,lim);
@@ -346,7 +366,7 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
         accepted_target[m] = b[m].target_num;
         fprintf(bid_f,",%d",accepted_target[m]);
     }
-    fprintf(bid_f,",MaxQ,%d\n",max_qdepth);
+    fprintf(bid_f,",index,%d,MaxQ,%d\n",m,max_qdepth);
     if (max_qdepth > MAX_QDEPTH) max_qdepth = MAX_QDEPTH;
     ++track.qdepth_tally[max_qdepth];
     ++track.n_qdepth_tally;
@@ -403,8 +423,11 @@ void handle_rep_chunk_put_response_received (const event_t *e)
                               &accept_event.window_start,
                               &accept_event.window_lim);
 
-    rendezvous_xfer_event.event.create_time = accept_event.event.create_time;
+    accept_event.event.create_time = now+1;
+    rendezvous_xfer_event.event.create_time = now+1;
     rendezvous_xfer_event.event.tllist.time = accept_event.window_lim;
+    assert(accept_event.window_start < accept_event.window_lim);
+    assert(accept_event.window_lim > now);
 
     rendezvous_xfer_event.event.type = REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
@@ -416,7 +439,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
          */
         insert_event(accept_event);
         if (target_in_accepted_list(accept_event.accepted_target,
-                            accept_event.target_num))
+                                    accept_event.target_num))
         {
             rendezvous_xfer_event.target_num = accept_event.target_num;
             insert_event(rendezvous_xfer_event);
