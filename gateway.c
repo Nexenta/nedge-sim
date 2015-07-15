@@ -270,7 +270,7 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
     bid_t *b_lim = bids + nbids;
     tick_t window_start;
     tick_t window_lim;
-    tick_t window_len,span,best_span;
+    tick_t span,best_span;
     unsigned n,m;
     unsigned b0target = bids[0].target_num;
     unsigned delta = config.n_replicas - 1;
@@ -279,6 +279,7 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
  
     // find the starting bid with the minimum delta to the +n_replicas bid
     for (m = n = 0,best_span = ~0L;n + delta < nbids; ++n) {
+        assert(bids[n].start > now);
         span = bids[n+delta].start - bids[n].start;
         if (span < best_span) {
             m = n;
@@ -299,7 +300,6 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
         
         if (b->start > window_start) window_start = b->start;
         if (b->lim < window_lim) window_lim = b->lim;
-        window_len = window_lim - window_start;
     }
     if (n < config.n_replicas)
         return 0;
