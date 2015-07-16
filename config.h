@@ -35,7 +35,7 @@ typedef struct sim_config {
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
-    unsigned bid_window_multiplier; // multiplier for offered bid window width
+    unsigned bid_window_multiplier_pct; // multiplier (%) for offered bid window width
     bool terse;                     // if true, omit many events from log_f
 } sim_config_t;
 
@@ -50,11 +50,12 @@ extern sim_config_t config;
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
 #define N_GATEWAYS 40
-#define PENALTY 1000                // approx .1 microsecond for replicast
-                                    // packet processing above TCP connection
-                                    // establishment overhead.
-#define BID_WINDOW_MULTIPLIER    2  // multiplier for offered bid to allow
-                                    // gateway to find overlapping windows.
+#define PENALTY 1000                 	// approx .1 microsecond for replicast
+                                     	// packet processing above TCP connection
+                                     	// establishment overhead.
+#define BID_WINDOW_MULTIPLIER_PCT 210	// multiplier (%) for offered bid to allow
+                                     	// gateway to find overlapping windows.
+				     	// default 210 yields (window * 2.1)
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.

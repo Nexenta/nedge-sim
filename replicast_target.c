@@ -90,7 +90,7 @@ static void make_bid (unsigned target_num,
     // make initial guess
     *start = s = now + 2*config.cluster_trip_time +
         config.replicast_packet_processing_penalty;;
-    *lim = s + derived.chunk_udp_xmit_duration*config.bid_window_multiplier;
+    *lim = s + (derived.chunk_udp_xmit_duration * config.bid_window_multiplier_pct)/100;
     assert(*start < *lim);
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next, delayed = false;
@@ -104,7 +104,7 @@ static void make_bid (unsigned target_num,
         // adjust guess to be after inbound_reservation p
         *start = p->lim + 1;
         *lim = *start +
-            derived.chunk_udp_xmit_duration*config.bid_window_multiplier;
+            (derived.chunk_udp_xmit_duration * config.bid_window_multiplier_pct) / 100;
         delayed = true;
     }
     assert(*start < *lim);

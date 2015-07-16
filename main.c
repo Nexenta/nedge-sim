@@ -53,7 +53,7 @@ sim_config_t config = {
     .chunk_size = CHUNK_SIZE,
     .n_gateways = N_GATEWAYS,
     .sim_duration = TICKS_PER_SECOND/100,
-    .bid_window_multiplier = BID_WINDOW_MULTIPLIER,
+    .bid_window_multiplier_pct = BID_WINDOW_MULTIPLIER_PCT,
     .seed = 0x12345678,
     
 };
@@ -560,10 +560,8 @@ static void usage (const char *progname) {
     fprintf(stderr," [cluster_trip_time <ticks>");
     fprintf(stderr,"\nOr %s help\n",progname);
     fprintf(stderr,"    to print this.\n");
-
     fprintf(stderr,"\nPenalty is assessed per chunk for Replicast overhead.\n");
-    fprintf(stderr,"bwn is bid window multiplier. Offered bid windows are");
-    fprintf(stderr," multiplied by this value.\n");
+    fprintf(stderr,"bwn is bid window multiplier\n");
     fprintf(stderr,"\nrep does replicast only.\n");
     fprintf(stderr,"ch does consistent hash only.\n");
     fprintf(stderr,"Default is to do both\n");
@@ -593,7 +591,7 @@ static void log_config (FILE *f)
             derived.chunk_disk_write_duration);
     fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
-    fprintf(f,"config.bid_window_multipler:%u\n",config.bid_window_multiplier);
+    fprintf(f,"config.bid_window_multipler_pct:%u\n",config.bid_window_multiplier_pct);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
@@ -628,7 +626,7 @@ static void customize_config (int argc, const char ** argv)
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
         else if (0 == strcmp(*argv,"bwm"))
-            config.bid_window_multiplier = atoi(argv[1]);
+            config.bid_window_multiplier_pct = atoi(argv[1]);
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;
