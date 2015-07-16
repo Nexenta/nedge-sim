@@ -563,7 +563,7 @@ void handle_chunk_put_ack (const event_t *e)
         fprintf(log_f,
                 "0x%lx,%s Completion,%d,duration msec,%04.3f write_qdepth %d\n",
                 e->tllist.time,tag,cp->seqnum,
-                ((float)duration)/(10*1024*1024),cp->write_qdepth);
+                ((float)duration)/(TICKS_PER_SECOND/1000),cp->write_qdepth);
     }
     if (duration < track.min_duration) track.min_duration = duration;
     if (duration > track.max_duration) track.max_duration = duration;
@@ -607,7 +607,7 @@ void report_duration_stats (void)
     unsigned long total_write;
     unsigned n;
     
-    const float ticks_per_ms = 10L*1024*1024*1024/(float)1000;
+    const float ticks_per_ms = TICKS_PER_SECOND/(float)1000;
 
     printf("\rPerformance results:");
     if (track.n_completions) {
@@ -625,7 +625,7 @@ void report_duration_stats (void)
                ((float)track.max_duration)/ticks_per_ms,max_x);
         total_write = (unsigned long)track.n_completions * config.chunk_size *
             config.n_replicas;
-        mbs = ((float)total_write)/(1024*1024) / derived.n_targets;
+        mbs = ((float)total_write)/(1000*1000) / derived.n_targets;
         chunks_per_t =
             (float)track.n_completions *
             ((float)config.n_replicas)/derived.n_targets;

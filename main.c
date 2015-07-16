@@ -516,7 +516,7 @@ static void derive_config (void)
     derived.total_write_mbs =
         divup(derived.n_tracked_puts * config.chunk_size,1024L*1024L);
     derived.disk_kb_write_time =
-        (unsigned)((TICKS_PER_SECOND/1024L)/config.mbs_sec_per_target_drive);
+        (unsigned)((TICKS_PER_SECOND/1000L)/config.mbs_sec_per_target_drive);
     chunk_udp_packets = divup(config.chunk_size,UDP_SIZE_BYTES);
     derived.chunk_udp_xmit_duration =
         (config.chunk_size+MINIMUM_UDPV6_BYTES*chunk_udp_packets)*8L;

@@ -18,7 +18,7 @@
 #define divup(a,b) (((a)+((b)-1))/(b))
 
 typedef unsigned long tick_t;
-#define TICKS_PER_SECOND (10L*1024*1024*1024)
+#define TICKS_PER_SECOND (10L*1000*1000*1000)
 
 #include "config.h"
 
