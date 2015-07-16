@@ -352,6 +352,7 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
 
     b = bids + bids_base;
     
+    // if (0 && m > config.n_replicas) // make it confurable: disregard target qdepths
     if (m > config.n_replicas)
         qsort(b,m,sizeof(bid_t),estimate_compare);
     *window_start = start = b->start;

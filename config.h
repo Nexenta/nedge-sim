@@ -53,7 +53,7 @@ extern sim_config_t config;
 #define PENALTY 1000                // approx .1 microsecond for replicast
                                     // packet processing above TCP connection
                                     // establishment overhead.
-#define BID_WINDOW_MULTIPLIER    4  // multiplier for offered bid to allow
+#define BID_WINDOW_MULTIPLIER    2  // multiplier for offered bid to allow
                                     // gateway to find overlapping windows.
 
 typedef struct sim_derived_config {

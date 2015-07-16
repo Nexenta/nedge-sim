@@ -632,18 +632,18 @@ static void customize_config (int argc, const char ** argv)
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;
-            --argv,--argc;
+            --argv,++argc;
         }
         else if (0 == strcmp(*argv,"ch")) {
             config.do_replicast = false;
             config.do_ch = true;
-            --argv,--argc;
+            --argv,++argc;
         }
         else if (0 == strcmp(*argv,"penalty"))
             config.replicast_packet_processing_penalty = atoi(argv[1]);
         else if (0 == strcmp(*argv,"terse")) {
             config.terse = true;
-            --argv,--argc;
+            --argv,++argc;
         }
         else {
             fprintf(stderr,"ERROR: bad arg %s %s\n\n",argv[0],argv[1]);
