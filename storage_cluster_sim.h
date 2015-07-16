@@ -69,7 +69,7 @@ typedef struct event {
 // Tracking data
 
 #define MAX_QDEPTH 10
-#define MAX_WRITE_QDEPTH 96
+#define MAX_WRITE_QDEPTH 30
 
 
 typedef struct trackers {
@@ -380,7 +380,7 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
 } chunkput_t;
 
 // Gateway event handlers - in gateway.c
-extern chunkput_t *next_cp (void);
+extern chunkput_t *next_cp (tick_t start_tikme);
 extern void handle_chunk_put_ready (const event_t *e);
 extern void handle_rep_chunk_put_response_received (const event_t *e);
 extern void handle_tcp_reception_ack (const event_t *e);

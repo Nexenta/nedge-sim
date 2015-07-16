@@ -46,7 +46,7 @@
 
 static unsigned n_chunkputs = 0;
 
-chunkput_t *next_cp (void)
+chunkput_t *next_cp (tick_t start_time)
 {
     chunkput_t *cp;
     
@@ -59,7 +59,7 @@ chunkput_t *next_cp (void)
     cp->sig = 0xABCD;
     cp->seqnum = ++n_chunkputs;
     ++track.n_initiated;
-    cp->started = now;
+    cp->started = start_time;
     cp->replicas_unacked = config.n_replicas;
     assert(cp->replicas_unacked);
     
@@ -454,7 +454,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     next_chunk_time = rendezvous_xfer_event.event.tllist.time;
     next_chunk_time -= 3*config.cluster_trip_time;
     if (next_chunk_time <= now) next_chunk_time = now+1;
-    if ((new_cp = next_cp()) != NULL)
+    if ((new_cp = next_cp(next_chunk_time)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_chunk_time);
 }
 
@@ -498,7 +498,7 @@ void handle_tcp_reception_ack (const event_t *e)
     if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->u.nonrep.acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
-    else if ((new_cp = next_cp()) != NULL)
+    else if ((new_cp = next_cp(next_tcp_time)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_tcp_time);
 }
 

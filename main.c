@@ -327,6 +327,7 @@ bool replicast; // simulation is currently in replicast mode
 static void track_report (void)
 {
     const char *tag = replicast ? "replicast" : "non";
+    unsigned i;
     
     unsigned now_millis = (unsigned)divup(now, TICKS_PER_SECOND/1000);
     unsigned completed_since_prev_report = (unsigned)
@@ -348,6 +349,15 @@ static void track_report (void)
        
         fprintf(log_f," inbound_reservation_conflicts,%2.2f%%\n",pc);
     }
+    fprintf(log_f,"%s,write_qdepth_tally",tag);
+    for (i = 0; i != MAX_WRITE_QDEPTH; ++i)
+        fprintf(log_f,",%d",
+                track.write_qdepth_tally[i]-track_prev.write_qdepth_tally[i]);
+    fprintf(log_f,"\n");
+    fprintf(log_f,"%s,qdepth_tally",tag);
+    for (i = 0; i != MAX_QDEPTH; ++i)
+        fprintf(log_f,",%d",track.qdepth_tally[i]-track_prev.qdepth_tally[i]);
+    fprintf(log_f,"\n");
 
     memcpy(&track_prev, &track, sizeof(track));
 }
@@ -424,7 +434,7 @@ static void start_gateway_thread (tick_t insert_time)
 
 {
     chunk_put_ready_t cpr;
-    chunkput_t *cp = next_cp();
+    chunkput_t *cp = next_cp(insert_time);
     
     assert(cp);
     assert(!cp->mbz);
