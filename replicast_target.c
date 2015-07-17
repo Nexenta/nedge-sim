@@ -210,15 +210,19 @@ static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
 // free the removed node
 //
 {
+#ifndef NDEBUG
     inbound_reservation_t *found_ir;
+#endif
  
     assert(replicast);
     assert(ir);
     assert(tp);
     assert(tp->ir_queue_depth);
     
+#ifndef NDEBUG
     found_ir = ir_find_by_cp(tp,ir->cp);
     assert(found_ir == ir);
+#endif
     
     tllist_remove((tllist_t *)ir);
     free(ir);

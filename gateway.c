@@ -272,7 +272,9 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
     tick_t window_lim;
     tick_t span,best_span;
     unsigned n,m;
+#ifndef NDEBUG
     unsigned b0target = bids[0].target_num;
+#endif
     unsigned delta = config.n_replicas - 1;
     
     assert(best);

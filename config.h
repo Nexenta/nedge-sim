@@ -70,6 +70,5 @@ typedef struct sim_derived_config {
 extern sim_derived_config_t derived;
 
 
-#define NDEBUG
 
 #endif
