@@ -1,0 +1,6 @@
+#!/bin/bash -x
+rm *.o
+rm *.csv
+rm test
+gcc -Wall -g -c -DNDEBUG=1 *.c
+gcc -Wall -g *.o -o test -lm

@@ -75,6 +75,8 @@ static event_t ehead = { // The list of events for gateways and targets
 trackers_t track = {.min_duration = ~0L};
 static trackers_t track_prev = { 0 };
 
+#ifdef NDEBUG
+#else
 static unsigned tllist_len (const tllist_t *head)
 {
     unsigned n;
@@ -85,8 +87,6 @@ static unsigned tllist_len (const tllist_t *head)
     return n;
 }
 
-#ifdef NDEBUG
-#else
 void tllist_node_verify(const tllist_t *t)
 {
     assert(t);
@@ -476,7 +476,7 @@ static void simulate (bool do_replicast)
     {
         tenths_done = (unsigned)(now*10L/config.sim_duration);
         if (tenths_done != prior_tenths_done) {
-            printf("\r%d/10 done",tenths_done);
+	    printf("\n%d/10 done",tenths_done);
             prior_tenths_done = tenths_done;
         }
         if (log_f) log_event(log_f,e);
