@@ -215,9 +215,11 @@ static void log_event (FILE *f,const event_t *e)
     u.e = e;
     switch (e->type) {
         case CHUNK_PUT_READY:
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
                     e->tllist.time,e->create_time,tag,
                     u.cpr->cp,chunk_seq(u.cpr->cp));
+	    }
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
             if (!config.terse) {
@@ -296,16 +298,20 @@ static void log_event (FILE *f,const event_t *e)
             }
             break;
         case REPLICA_PUT_ACK:
-            fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,CP,0x%lx,%d,tgt,%d",
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,CP,0x%lx,%d,tgt,%d",
                     e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
-            fprintf(f,",depth,%d\n",u.rpack->write_qdepth);
+                fprintf(f,",depth,%d\n",u.rpack->write_qdepth);
+            }
             break;
         case CHUNK_PUT_ACK:
             assert(u.cpack->write_qdepth >= 0);
-            fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,CP,0x%lx,%d,depth,%d\n",
+            if (!config.terse) {
+                fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,CP,0x%lx,%d,depth,%d\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
                     chunk_seq(u.cpack->cp),u.cpack->write_qdepth);
+	    }
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -358,6 +364,7 @@ static void track_report (void)
     for (i = 0; i != MAX_QDEPTH; ++i)
         fprintf(log_f,",%d",track.qdepth_tally[i]-track_prev.qdepth_tally[i]);
     fprintf(log_f,"\n");
+    fflush(log_f);
 
     memcpy(&track_prev, &track, sizeof(track));
 }
