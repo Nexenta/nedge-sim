@@ -78,6 +78,7 @@ static void make_bid (unsigned target_num,
     rep_target_t *tp = rept + target_num;
     tick_t s;
     tick_t estimated_write_start;
+
     bool delayed;
 
     assert(start);
@@ -90,7 +91,8 @@ static void make_bid (unsigned target_num,
     // make initial guess
     *start = s = now + 2*config.cluster_trip_time +
         config.replicast_packet_processing_penalty;;
-    *lim = s + (derived.chunk_udp_xmit_duration * config.bid_window_multiplier_pct)/100;
+    *lim = s +
+	(derived.chunk_udp_xmit_duration*config.bid_window_multiplier_pct)/100;
     assert(*start < *lim);
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next, delayed = false;
@@ -104,7 +106,8 @@ static void make_bid (unsigned target_num,
         // adjust guess to be after inbound_reservation p
         *start = p->lim + 1;
         *lim = *start +
-            (derived.chunk_udp_xmit_duration * config.bid_window_multiplier_pct) / 100;
+            (derived.chunk_udp_xmit_duration*config.bid_window_multiplier_pct)
+	    / 100;
         delayed = true;
     }
     assert(*start < *lim);
@@ -115,6 +118,9 @@ static void make_bid (unsigned target_num,
     estimated_write_start = *lim;
     if (tp->last_disk_write_completion > estimated_write_start)
         estimated_write_start = tp->last_disk_write_completion;
+    //
+    // This is an *estimated* ack, we don't know the variation yet
+    //
     *ack_at = estimated_write_start + config.cluster_trip_time +
         derived.chunk_disk_write_duration;
     
@@ -288,6 +294,11 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
     tick_t write_start,write_complete;
     disk_write_start_t dws;
+    tick_t write_variance =
+	    derived.chunk_disk_write_duration/config.write_variance;;
+    tick_t write_duration = derived.chunk_disk_write_duration
+                            - write_variance/2
+                            +  (rand() % write_variance);
 
     
     assert(replicast);
@@ -304,8 +315,9 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
 
     dws.event.create_time = e->tllist.time;
     dws.event.tllist.time = write_start;
-    write_complete = write_start + derived.chunk_disk_write_duration;
+    write_complete = write_start + write_duration;
     tp->last_disk_write_completion = write_complete;
+    dws.expected_done = write_complete;
     dws.event.type = DISK_WRITE_START;
     dws.cp = rtr->cp;
     dws.target_num = rtr->target_num;

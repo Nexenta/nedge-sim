@@ -198,6 +198,11 @@ void handle_tcp_reception_complete (const event_t *e)
     nonrep_target_t *t;
     tick_t write_start,write_completion;
     unsigned n;
+    tick_t write_variance =
+	    derived.chunk_disk_write_duration/config.write_variance;
+    tick_t write_duration = derived.chunk_disk_write_duration
+        - write_variance/2
+        +  (rand() % write_variance);
 
     assert (e); (void)e;
     assert(!replicast);
@@ -227,11 +232,12 @@ void handle_tcp_reception_complete (const event_t *e)
         write_start = (t->last_disk_write_completion > e->tllist.time)
             ? t->last_disk_write_completion
             : e->tllist.time;
-        write_completion = write_start + derived.chunk_disk_write_duration;
+        write_completion = write_start + write_duration;
         
         dws.event.create_time = e->tllist.time;
         dws.event.tllist.time = write_start;
         t->last_disk_write_completion = write_completion;
+        dws.expected_done = write_completion;
         dws.event.type = DISK_WRITE_START;
         dws.cp = ort->cp;
         assert(chunk_seq(ort->cp));

@@ -17,8 +17,7 @@ void handle_disk_write_start (const event_t *e)
     assert(dws->write_qdepth >= 0);
     assert(dws->write_qdepth < 999);
     dwc.event.create_time = e->tllist.time;
-    dwc.event.tllist.time = dwc.event.create_time +
-                            derived.chunk_disk_write_duration;
+    dwc.event.tllist.time = dws->expected_done;
 
     dwc.event.type = DISK_WRITE_COMPLETION;
     dwc.cp = dws->cp;

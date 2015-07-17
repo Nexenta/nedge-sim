@@ -54,6 +54,7 @@ sim_config_t config = {
     .n_gateways = N_GATEWAYS,
     .sim_duration = TICKS_PER_SECOND/100,
     .bid_window_multiplier_pct = BID_WINDOW_MULTIPLIER_PCT,
+    .write_variance = 50,
     .seed = 0x12345678,
     
 };
@@ -645,6 +646,8 @@ static void customize_config (int argc, const char ** argv)
             config.cluster_trip_time = atoi(argv[1]);
         else if (0 == strcmp(*argv,"bwm"))
             config.bid_window_multiplier_pct = atoi(argv[1]);
+	else if (0 == strcmp(*argv,"variance"))
+		config.write_variance = atoi(argv[1]);
         else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;

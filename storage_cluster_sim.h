@@ -234,6 +234,7 @@ typedef struct disk_write_start {
     event_t event;          // disk_write_start is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // which target is completing the write?
+    tick_t expected_done;   // when is this write expected to complete?
     int write_qdepth;
     unsigned *qptr;         // pointer to counter to be incremented when this
     // event is executed.
