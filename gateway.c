@@ -611,7 +611,7 @@ void report_duration_stats (void)
     
     const float ticks_per_ms = TICKS_PER_SECOND/(float)1000;
 
-    printf("\rPerformance results:");
+    printf("\nPerformance results:");
     if (track.n_completions) {
         msecs = ((double_t)now)/ticks_per_ms;
         printf("\nTotal unique chunks: initiated %lu completed %lu ",

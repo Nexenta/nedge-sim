@@ -476,7 +476,8 @@ static void simulate (bool do_replicast)
     {
         tenths_done = (unsigned)(now*10L/config.sim_duration);
         if (tenths_done != prior_tenths_done) {
-	    printf("\n%d/10 done",tenths_done);
+            printf("-----%d0", tenths_done);
+	    fflush(stdout);
             prior_tenths_done = tenths_done;
         }
         if (log_f) log_event(log_f,e);
