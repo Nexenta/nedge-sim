@@ -35,3 +35,12 @@ set -x
 set +x
 [ -f $name.tgz ] && rm $name.tgz
 tar zcf $name.tgz $name.txt log.csv
+#############
+name="gw512c128K"
+#############
+[ -f $name.txt ] && rm $name.txt
+set -x
+./test terse gateways 512 chunk_size 128 ngs 128 duration 24 seed 5791 | tee $name.txt
+set +x
+[ -f $name.tgz ] && rm $name.tgz
+tar zcf $name.tgz $name.txt log.csv
