@@ -322,7 +322,9 @@ extern FILE *log_f;
 
 
 typedef struct target { // common fields for replicast and non-replicast target
-    unsigned write_qdepth;
+    unsigned write_qdepth;      // pending writes on this target
+    unsigned total_inflight;    // chunk replicas assigned to this target
+                                // but not yet acked to the gateway
 } target_t;
 
 // Chunkput Tracking
@@ -396,6 +398,8 @@ extern void init_seqnum(void);
 // Common Target event handlers - in common_target.c
 extern void handle_disk_write_start (const event_t *e);
 extern void handle_disk_write_completion (const event_t *e);
+extern void inc_target_total_queue(unsigned target_num);
+extern void dec_target_total_queue(unsigned target_num);
 
 // Replicast-specific Target event handlers - in replicast_target.c
 
@@ -405,6 +409,7 @@ extern void handle_rep_rendezvous_xfer_received (const event_t *e);
 extern void init_rep_targets(unsigned n_targets);
 extern void report_rep_chunk_distribution(void);
 extern void release_rep_targets(void);
+extern target_t *rep_target (unsigned target_num);
 
 // Consistent Hash / TCP specific Target event handlers
 extern void handle_tcp_xmit_received (const event_t *e);
@@ -412,6 +417,7 @@ extern void handle_tcp_reception_complete (const event_t *e);
 extern void init_nonrep_targets(unsigned n_targets);
 extern void report_nonrep_chunk_distribution(void);
 extern void release_nonrep_targets(void);
+extern target_t *nonrep_target (unsigned target_num);
 #endif
 
 

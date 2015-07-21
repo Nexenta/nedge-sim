@@ -331,6 +331,30 @@ bool replicast; // simulation is currently in replicast mode
 
 #define MSEC_TICKS (TICKS_PER_SECOND/1000L)
 
+#define for_ng(target,ng) \
+for ((target) = (ng);\
+    (target) < derived.n_targets;\
+    (target) += config.n_negotiating_groups)
+    static void inflight_report (const char *tag)
+{
+    unsigned ng,t,sum;
+    unsigned long all_cluster;
+    target_t *tp;
+    
+    for (ng = 0,all_cluster = 0L; ng != config.n_negotiating_groups;++ng) {
+        fprintf(log_f,"%s,Inflight,NG,%d,Totals",tag,ng);
+        sum = 0;
+        for_ng(t,ng) {
+            tp = replicast ? rep_target(t) : nonrep_target(t);
+            fprintf(log_f,",%d",tp->total_inflight);
+            sum += tp->total_inflight;
+        }
+        fprintf(log_f,",AVG,%2.2f\n",((float)sum)/config.n_targets_per_ng);
+        all_cluster += sum;
+    }
+    fprintf(log_f,"%s,Inflight,All_Groups,%ld\n",tag,all_cluster);
+}
+
 static void track_report (void)
 {
     const char *tag = replicast ? "replicast" : "non";
@@ -356,6 +380,7 @@ static void track_report (void)
        
         fprintf(log_f," inbound_reservation_conflicts,%2.2f%%\n",pc);
     }
+    inflight_report(tag);
     fprintf(log_f,"%s,write_qdepth_tally",tag);
     for (i = 0; i != MAX_WRITE_QDEPTH; ++i)
         fprintf(log_f,",%d",

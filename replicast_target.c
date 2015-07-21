@@ -28,6 +28,11 @@ typedef struct rep_target_t {       // Track replicast target
 
 static rep_target_t *rept = NULL;
 
+target_t *rep_target (unsigned target_num)
+{
+    return &rept[target_num].common;
+}
+
 void init_rep_targets(unsigned n_targets)
 //
 // Initialize the target subsystem, specifically the irhead for each

@@ -69,4 +69,22 @@ void handle_disk_write_completion (const event_t *e)
     insert_event (rpa);
 }
 
+void inc_target_total_queue(unsigned target_num)
+{
+    target_t *t;
+    
+    t = replicast ? rep_target(target_num) : nonrep_target(target_num);
+    
+    ++t->total_inflight;
+}
+
+void dec_target_total_queue(unsigned target_num)
+{
+    target_t *t;
+    
+    t = replicast ? rep_target(target_num) : nonrep_target(target_num);
+    
+    --t->total_inflight;
+}
+
 

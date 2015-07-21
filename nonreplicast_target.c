@@ -36,6 +36,11 @@ typedef struct nonrep_target_t {
 
 static nonrep_target_t *nrt = NULL;
 
+target_t *nonrep_target (unsigned target_num)
+{
+    return &nrt[target_num].common;
+}
+
 void init_nonrep_targets(unsigned n_targets)
 //
 // Initialize the target subsystem, specifically the irhead for each

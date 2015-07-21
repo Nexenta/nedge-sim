@@ -121,6 +121,7 @@ static void select_nonrep_targets (chunkput_t *c)
             }
         }
         c->u.nonrep.ch_targets[n] = t;
+        inc_target_total_queue(t);
         fprintf(log_f,",%d",t);
     }
     fprintf(log_f,"\n");
@@ -369,6 +370,7 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
             max_qdepth = b[m].queue_depth;
         accepted_target[m] = b[m].target_num;
         fprintf(bid_f,",%d",accepted_target[m]);
+        inc_target_total_queue(b[m].target_num);
     }
     fprintf(bid_f,",index,%d,MaxQ,%d\n",m,max_qdepth);
     if (max_qdepth > MAX_QDEPTH) max_qdepth = MAX_QDEPTH;
@@ -525,6 +527,8 @@ void handle_replica_put_ack (const event_t *e)
     assert(cp->write_qdepth >= 0);
     if (rpa->write_qdepth > cp->write_qdepth)
         cp->write_qdepth = rpa->write_qdepth;
+    
+    dec_target_total_queue(rpa->target_num);
     
     if (!--cp->replicas_unacked) {
         cpa.event.create_time = e->tllist.time;
