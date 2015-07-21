@@ -32,6 +32,9 @@ typedef struct sim_config {
                                     // Recommend simulation values: 4K,64K,1M
     unsigned long sim_duration;     // Simulation duration in network bit-ticks.
     unsigned n_gateways;            // # of gateways producing chunks
+    unsigned write_variance;        // writes are +/- (write/(variance/2))
+    			            // variance  is  1/nth the whole duration
+				    // centered on 1.0
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
