@@ -639,7 +639,7 @@ static void log_config (FILE *f)
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
     fprintf(f,"config.bid_window_multipler_pct:%u\n",
             config.bid_window_multiplier_pct);
-    fprintf(f,"config.sample_intervale:%d\n",config.sample_interval);
+    fprintf(f,"config.sample_interval:%d\n",config.sample_interval);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);

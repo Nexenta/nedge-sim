@@ -62,7 +62,7 @@ extern sim_config_t config;
 #define BID_WINDOW_MULTIPLIER_PCT 210	// multiplier (%) for offered bid to allow
                                      	// gateway to find overlapping windows.
 				     	// default 210 yields (window * 2.1)
-#define SAMPLE_INTERVAL 1000    // 1msec
+#define SAMPLE_INTERVAL (TICKS_PER_SECOND/1000)    // 1msec
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.
