@@ -55,6 +55,7 @@ sim_config_t config = {
     .sim_duration = TICKS_PER_SECOND/100,
     .bid_window_multiplier_pct = BID_WINDOW_MULTIPLIER_PCT,
     .write_variance = 50,
+    .sample_interval = SAMPLE_INTERVAL,
     .seed = 0x12345678,
     
 };
@@ -448,7 +449,7 @@ static void process_event (const event_t *e)
             if (now < config.sim_duration) {
                 track_it.event.create_time = e->tllist.time;
                 track_it.event.tllist.time = e->tllist.time +
-                    TICKS_PER_SECOND / 1000;
+                                            config.sample_interval;
                 track_it.event.type = TRACK_SAMPLE;
                 insert_event(track_it);
             }
@@ -488,7 +489,7 @@ static void simulate (bool do_replicast)
     unsigned prior_tenths_done = 0,tenths_done;
     
     track_it.event.create_time = now = 0L;
-    track_it.event.tllist.time = TICKS_PER_SECOND / 1000;
+    track_it.event.tllist.time = config.sample_interval;
     track_it.event.type = TRACK_SAMPLE;
 
     insert_event(track_it);
@@ -599,6 +600,7 @@ static void usage (const char *progname) {
     fprintf(stderr," [gateways <#>],");
     fprintf(stderr," [mbs_sec <#>");
     fprintf(stderr," [bwn <#>]");
+    fprintf(stderr," [sample <uSecs>");
     fprintf(stderr," [terse]");
     fprintf(stderr," penalty <ticks_per_chunk>");
     fprintf(stderr," [cluster_trip_time <ticks>");
@@ -635,7 +637,9 @@ static void log_config (FILE *f)
             derived.chunk_disk_write_duration);
     fprintf(f,"config.n_gateways:%d\n",config.n_gateways);
     fprintf(f,"config.penalty:%u\n",config.replicast_packet_processing_penalty);
-    fprintf(f,"config.bid_window_multipler_pct:%u\n",config.bid_window_multiplier_pct);
+    fprintf(f,"config.bid_window_multipler_pct:%u\n",
+            config.bid_window_multiplier_pct);
+    fprintf(f,"config.sample_intervale:%d\n",config.sample_interval);
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
@@ -673,7 +677,9 @@ static void customize_config (int argc, const char ** argv)
             config.bid_window_multiplier_pct = atoi(argv[1]);
 	else if (0 == strcmp(*argv,"variance"))
 		config.write_variance = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"rep")) {
+    else if (0 == strcmp(*argv,"sample"))
+        config.sample_interval = atoi(argv[1])*(TICKS_PER_SECOND/(1000*1000));
+    else if (0 == strcmp(*argv,"rep")) {
             config.do_replicast = true;
             config.do_ch = false;
             --argv,++argc;
@@ -702,7 +708,6 @@ int main(int argc, const char * argv[]) {
     derive_config();
     log_f = open_outf("log");
     bid_f = open_outf("bid");
-
     
     log_config(log_f);
     if (config.do_replicast) {
@@ -721,7 +726,6 @@ int main(int argc, const char * argv[]) {
     if (config.do_ch) {
         printf     ("\nSimulating CH/TCP ***********************************************\n");
         fprintf(log_f,"Simulating CH/TCP ***********************************************\n");
-        fprintf(bid_f,"Simulating CH/TCP ***********************************************\n");
 
         init_seqnum();
         replicast = false;

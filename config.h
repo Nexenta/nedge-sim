@@ -38,7 +38,10 @@ typedef struct sim_config {
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
-    unsigned bid_window_multiplier_pct; // multiplier (%) for offered bid window width
+    unsigned bid_window_multiplier_pct; // multiplier (%) for offered bid window
+                                    // width
+    unsigned sample_interval;       // take a TRACK_SAMPLE every <this many>
+                                    // useconds
     bool terse;                     // if true, omit many events from log_f
 } sim_config_t;
 
@@ -59,6 +62,7 @@ extern sim_config_t config;
 #define BID_WINDOW_MULTIPLIER_PCT 210	// multiplier (%) for offered bid to allow
                                      	// gateway to find overlapping windows.
 				     	// default 210 yields (window * 2.1)
+#define SAMPLE_INTERVAL 1000    // 1msec
 
 typedef struct sim_derived_config {
     unsigned n_targets;             // # of targets in the cluster.
