@@ -373,11 +373,6 @@ static  void select_replicast_targets (chunk_put_handle_t cp,
         inc_target_total_queue(b[m].target_num);
     }
     fprintf(bid_f,",index,%d,MaxQ,%d\n",m,max_qdepth);
-    if (max_qdepth > MAX_QDEPTH) max_qdepth = MAX_QDEPTH;
-    ++track.qdepth_tally[max_qdepth];
-    ++track.n_qdepth_tally;
-    track.qdepth_total += max_qdepth;
-    if (max_qdepth > track.max_qdepth) track.max_qdepth = max_qdepth;
     return;
 }
 
@@ -584,19 +579,7 @@ void handle_chunk_put_ack (const event_t *e)
     }
     if (cp->write_qdepth > MAX_WRITE_QDEPTH)
         cp->write_qdepth = MAX_WRITE_QDEPTH;
-    if (!replicast) {
-        ++track.qdepth_tally[cp->u.nonrep.max_ongoing_rx];
-        ++track.n_qdepth_tally;
-        track.qdepth_total += cp->u.nonrep.max_ongoing_rx;
-        if (cp->u.nonrep.max_ongoing_rx > track.max_qdepth)
-            track.max_qdepth = cp->u.nonrep.max_ongoing_rx;
-    }
-    ++track.write_qdepth_tally[cp->write_qdepth];
-    ++track.n_write_qdepth_tally;
-    track.write_dqepth_total += cp->write_qdepth;
-    if (cp->write_qdepth > track.max_write_qdepth)
-        track.max_write_qdepth = cp->write_qdepth;
-    
+
     assert(!cp->replicas_unacked);
     memset(cp,0xFE,sizeof *cp);
     free(cp);
@@ -609,9 +592,7 @@ void report_duration_stats (void)
 
 {
     float avg_ticks,min_x,max_x,mbs,msecs,chunks_per_t;
-    signed long m;
     unsigned long total_write;
-    unsigned n;
     
     const float ticks_per_ms = TICKS_PER_SECOND/(float)1000;
 
@@ -646,32 +627,7 @@ void report_duration_stats (void)
                chunks_per_t);
         printf("Average gateway throughput %6.2fMB/s\n",mbs*1000/msecs);
     
-        fprintf(log_f,"\nInbound queue depth distribution:\n");
-        for (n=0,m = track.n_qdepth_tally/2;n <= track.max_qdepth;++n) {
-            fprintf(log_f,"([%d]:%d",n,track.qdepth_tally[n]);
-            if (m > 0) {
-                m -= track.qdepth_tally[n];
-                if (m <=0) fprintf(log_f,"<-- Median");
-            }
-            fprintf (log_f,"\n");
-        }
-        fprintf(log_f,"Mean Average: %3.2f\n",
-               ((float)track.qdepth_total)/track.n_qdepth_tally);
-        fprintf(log_f,"\nWrite queue depth distribution:\n");
-        for (n=0,m = track.n_write_qdepth_tally/2;
-             n <= track.max_write_qdepth;
-             ++n)
-        {
-            fprintf(log_f,"[%d]:%d",n,track.write_qdepth_tally[n]);
-            if (m > 0) {
-                m -= track.write_qdepth_tally[n];
-                if (m <=0) fprintf(log_f,"<-- Median");
-            }
-            fprintf (log_f,"\n");
-        }
     }
-    fprintf(log_f,"Mean Average: %3.2f\n",
-           ((float)track.write_dqepth_total)/track.n_write_qdepth_tally);
 }
 
 unsigned chunk_seq (chunk_put_handle_t cph)

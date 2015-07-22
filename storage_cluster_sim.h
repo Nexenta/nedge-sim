@@ -81,14 +81,6 @@ typedef struct trackers {
     unsigned long n_writes_initiated;
     unsigned long n_writes_completed;
     unsigned long n_completions;
-    unsigned qdepth_tally[MAX_QDEPTH+1];
-    unsigned max_qdepth;
-    unsigned n_qdepth_tally;
-    unsigned long qdepth_total;
-    unsigned write_qdepth_tally [MAX_WRITE_QDEPTH+1];
-    unsigned max_write_qdepth;
-    unsigned n_write_qdepth_tally;
-    unsigned long write_dqepth_total;
     unsigned n_active_targets;    // How many targets are currently writing?
     unsigned long n_reservation_conflicts;
     unsigned long n_reservations;

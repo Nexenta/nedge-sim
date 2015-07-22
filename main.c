@@ -336,21 +336,23 @@ bool replicast; // simulation is currently in replicast mode
 for ((target) = (ng);\
     (target) < derived.n_targets;\
     (target) += config.n_negotiating_groups)
-    static void inflight_report (const char *tag)
+
+static void inflight_report (const char *tag)
 {
     unsigned ng,t,sum;
     unsigned long all_cluster;
     target_t *tp;
     
     for (ng = 0,all_cluster = 0L; ng != config.n_negotiating_groups;++ng) {
-        fprintf(log_f,"%s,Inflight,NG,%d,Totals",tag,ng);
+        if (!config.terse) fprintf(log_f,"%s,Inflight,NG,%d,Totals",tag,ng);
         sum = 0;
         for_ng(t,ng) {
             tp = replicast ? rep_target(t) : nonrep_target(t);
-            fprintf(log_f,",%d",tp->total_inflight);
+            if (!config.terse) fprintf(log_f,",%d",tp->total_inflight);
             sum += tp->total_inflight;
         }
-        fprintf(log_f,",AVG,%2.2f\n",((float)sum)/config.n_targets_per_ng);
+        if (!config.terse)
+            fprintf(log_f,",AVG,%2.2f\n",((float)sum)/config.n_targets_per_ng);
         all_cluster += sum;
     }
     fprintf(log_f,"%s,Inflight,All_Groups,%ld\n",tag,all_cluster);
@@ -359,7 +361,6 @@ for ((target) = (ng);\
 static void track_report (void)
 {
     const char *tag = replicast ? "replicast" : "non";
-    unsigned i;
     
     unsigned now_millis = (unsigned)divup(now, TICKS_PER_SECOND/1000);
     unsigned completed_since_prev_report = (unsigned)
@@ -372,7 +373,7 @@ static void track_report (void)
             tag,now,now_millis,
             track.n_initiated,track.n_writes_initiated,track.n_writes_completed,
             track.n_completions,completed_since_prev_report,
-	    track.n_active_targets, active_target_pct);
+            track.n_active_targets, active_target_pct);
     if (!replicast)
         fprintf(log_f,"\n");
     else {
@@ -382,15 +383,6 @@ static void track_report (void)
         fprintf(log_f," inbound_reservation_conflicts,%2.2f%%\n",pc);
     }
     inflight_report(tag);
-    fprintf(log_f,"%s,write_qdepth_tally",tag);
-    for (i = 0; i != MAX_WRITE_QDEPTH; ++i)
-        fprintf(log_f,",%d",
-                track.write_qdepth_tally[i]-track_prev.write_qdepth_tally[i]);
-    fprintf(log_f,"\n");
-    fprintf(log_f,"%s,qdepth_tally",tag);
-    for (i = 0; i != MAX_QDEPTH; ++i)
-        fprintf(log_f,",%d",track.qdepth_tally[i]-track_prev.qdepth_tally[i]);
-    fprintf(log_f,"\n");
     fflush(log_f);
 
     memcpy(&track_prev, &track, sizeof(track));
