@@ -518,18 +518,12 @@ void handle_replica_put_ack (const event_t *e)
     assert(cp->replicas_unacked);
     assert(cp->replicas_unacked <= config.n_replicas);
     
-    assert(rpa->write_qdepth >= 0);
-    assert(cp->write_qdepth >= 0);
-    if (rpa->write_qdepth > cp->write_qdepth)
-        cp->write_qdepth = rpa->write_qdepth;
-    
     dec_target_total_queue(rpa->target_num);
     
     if (!--cp->replicas_unacked) {
         cpa.event.create_time = e->tllist.time;
         cpa.event.tllist.time = e->tllist.time + 1;
         cpa.event.type = CHUNK_PUT_ACK;
-        cpa.write_qdepth = cp->write_qdepth;
         cpa.cp = rpa->cp;
 
         insert_event(cpa);
@@ -550,7 +544,6 @@ void handle_chunk_put_ack (const event_t *e)
     char *tag = replicast ? "replicast" : "non";
     
     assert(e);
-    assert(cpa->write_qdepth >= 0);
 
     cp = (chunkput_t *)cpa->cp;
     cp->done = e->tllist.time;

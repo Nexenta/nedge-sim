@@ -282,38 +282,45 @@ static void log_event (FILE *f,const event_t *e)
             break;
         case DISK_WRITE_START:
             if (!config.terse) {
+                unsigned tgt = u.dws->target_num;
+                target_t *tp = replicast ? rep_target(tgt) : nonrep_target(tgt);
                 fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_START,0x%lx,%d",
                         e->tllist.time,e->create_time,tag,
                         u.dws->cp,chunk_seq(u.dws->cp));
-                fprintf(f,",tgt,%d,qdepth,%d\n",u.dwc->target_num,
-                        u.dwc->write_qdepth);
+                fprintf(f,",tgt,%d,inflight,%d\n",u.dwc->target_num,
+                        tp->total_inflight);
             }
             break;
         case DISK_WRITE_COMPLETION:
             if (!config.terse) {
+                unsigned tgt = u.dwc->target_num;
+                
+                target_t *tp = replicast ? rep_target(tgt) : nonrep_target(tgt);
                 fprintf(f,"0x%lx,0x%lx,%s DISK_WRITE_COMPLETION,0x%lx,%d,tgt,%d",
                         e->tllist.time,e->create_time,tag,
                         u.dwc->cp,chunk_seq(u.dwc->cp),
                         u.dwc->target_num);
-                fprintf(f,",target,%d,qdepth,%d\n",u.dwc->target_num,
-                        u.dwc->write_qdepth);
+                fprintf(f,",target,%d,inflight,%d\n",u.dwc->target_num,
+                       tp->total_inflight);
             }
             break;
         case REPLICA_PUT_ACK:
             if (!config.terse) {
+                unsigned tgt = u.rpack->target_num;
+                target_t *tp = replicast ? rep_target(tgt) : nonrep_target(tgt);
+                
                 fprintf(f,"0x%lx,0x%lx,%s REPLICA_PUT_ACK,CP,0x%lx,%d,tgt,%d",
                     e->tllist.time,e->create_time,tag,u.rpack->cp,
                     chunk_seq(u.rpack->cp),u.rpack->target_num);
-                fprintf(f,",depth,%d\n",u.rpack->write_qdepth);
+                fprintf(f,",inflight,%d\n",tp->total_inflight);
             }
             break;
         case CHUNK_PUT_ACK:
-            assert(u.cpack->write_qdepth >= 0);
             if (!config.terse) {
-                fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,CP,0x%lx,%d,depth,%d\n",
+                fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_ACK,CP,0x%lx,%d\n",
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
-                    chunk_seq(u.cpack->cp),u.cpack->write_qdepth);
-	    }
+                    chunk_seq(u.cpack->cp));
+            }
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -330,6 +337,10 @@ tick_t now = 0;
 
 bool replicast; // simulation is currently in replicast mode
 
+FILE *log_f;
+FILE *bid_f;
+static FILE *inflight_f;
+
 #define MSEC_TICKS (TICKS_PER_SECOND/1000L)
 
 #define for_ng(target,ng) \
@@ -337,28 +348,22 @@ for ((target) = (ng);\
     (target) < derived.n_targets;\
     (target) += config.n_negotiating_groups)
 
-static void inflight_report (const char *tag)
+static void inflight_report (FILE *f,const char *tag)
 {
-    unsigned ng,t,sum;
-    unsigned long all_cluster;
+    unsigned t,sum;
     target_t *tp;
     
-    for (ng = 0,all_cluster = 0L; ng != config.n_negotiating_groups;++ng) {
-        if (!config.terse) fprintf(log_f,"%s,Inflight,NG,%d,Totals",tag,ng);
-        sum = 0;
-        for_ng(t,ng) {
-            tp = replicast ? rep_target(t) : nonrep_target(t);
-            if (!config.terse) fprintf(log_f,",%d",tp->total_inflight);
-            sum += tp->total_inflight;
-        }
-        if (!config.terse)
-            fprintf(log_f,",AVG,%2.2f\n",((float)sum)/config.n_targets_per_ng);
-        all_cluster += sum;
+    fprintf(f,"%s",tag);
+    sum = 0;
+    for (t = 0; t != derived.n_targets; ++t) {
+        tp = replicast ? rep_target(t) : nonrep_target(t);
+        fprintf(f,",%d",tp->total_inflight);
+        sum += tp->total_inflight;
     }
-    fprintf(log_f,"%s,Inflight,All_Groups,%ld\n",tag,all_cluster);
+    fprintf(f,",AVG,%2.2f\n",((float)sum)/derived.n_targets);
 }
 
-static void track_report (void)
+static void track_report (FILE *inflight_f)
 {
     const char *tag = replicast ? "replicast" : "non";
     
@@ -382,7 +387,7 @@ static void track_report (void)
        
         fprintf(log_f," inbound_reservation_conflicts,%2.2f%%\n",pc);
     }
-    inflight_report(tag);
+    inflight_report(inflight_f,tag);
     fflush(log_f);
 
     memcpy(&track_prev, &track, sizeof(track));
@@ -437,7 +442,7 @@ static void process_event (const event_t *e)
             handle_chunk_put_ack(e);
             break;
         case TRACK_SAMPLE:
-            track_report();
+            track_report(inflight_f);
             if (now < config.sim_duration) {
                 track_it.event.create_time = e->tllist.time;
                 track_it.event.tllist.time = e->tllist.time +
@@ -579,9 +584,6 @@ static FILE *open_outf (const char *type)
 // #REPLICAST defined for one executable and once without
 //
 
-FILE *log_f;
-FILE *bid_f;
-
 static void usage (const char *progname) {
     fprintf(stderr,"Usage: %s",progname);
     fprintf(stderr," [rep|ch]");
@@ -700,6 +702,7 @@ int main(int argc, const char * argv[]) {
     derive_config();
     log_f = open_outf("log");
     bid_f = open_outf("bid");
+    inflight_f = open_outf("inflight");
     
     log_config(log_f);
     if (config.do_replicast) {

@@ -14,16 +14,12 @@ void handle_disk_write_start (const event_t *e)
     disk_write_start_t *dws = (disk_write_start_t *)e;
     disk_write_completion_t dwc;
     
-    assert(dws->write_qdepth >= 0);
-    assert(dws->write_qdepth < 999);
     dwc.event.create_time = e->tllist.time;
     dwc.event.tllist.time = dws->expected_done;
 
     dwc.event.type = DISK_WRITE_COMPLETION;
     dwc.cp = dws->cp;
     dwc.target_num = dws->target_num;
-    dwc.write_qdepth = dws->write_qdepth;
-    dwc.qptr = dws->qptr;
     ++track.n_writes_initiated;
     insert_event(dwc);
 }
@@ -41,30 +37,22 @@ void handle_disk_write_completion (const event_t *e)
     replica_put_ack_t rpa;
     assert(e);
     assert(chunk_seq(dwc->cp));
-    assert(dwc->write_qdepth >= 0);
 
     rpa.event.create_time = e->tllist.time;
     rpa.event.tllist.time = e->tllist.time + config.cluster_trip_time;
     rpa.event.type = REPLICA_PUT_ACK;
     rpa.cp = dwc->cp;
-    assert(dwc->qptr);
-    assert(*dwc->qptr);
+
     if (!track.drain) {
         if (!config.terse) {
             fprintf(log_f,
-                    "%s,DiskWriteCompletion,cp,0x%lx,%d,target,%d,qdepth,%d",
-                    tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num,*dwc->qptr);
-            fprintf(log_f,",write_q_depth,%d",dwc->write_qdepth);
+                    "%s,DiskWriteCompletion,cp,0x%lx,%d,target,%d,",
+                    tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num);
             fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
-        }
-        if (--*dwc->qptr == 0) {
-            assert(track.n_active_targets);
-            --track.n_active_targets;
         }
     }
     rpa.target_num = dwc->target_num;
     assert(dwc->target_num < derived.n_targets);
-    rpa.write_qdepth = dwc->write_qdepth;
     ++track.n_writes_completed;
     insert_event (rpa);
 }
@@ -76,6 +64,7 @@ void inc_target_total_queue(unsigned target_num)
     t = replicast ? rep_target(target_num) : nonrep_target(target_num);
     
     ++t->total_inflight;
+    if (t->total_inflight == 1) ++track.n_active_targets;
 }
 
 void dec_target_total_queue(unsigned target_num)
@@ -85,6 +74,7 @@ void dec_target_total_queue(unsigned target_num)
     t = replicast ? rep_target(target_num) : nonrep_target(target_num);
     
     --t->total_inflight;
+    if (t->total_inflight == 0) --track.n_active_targets;
 }
 
 

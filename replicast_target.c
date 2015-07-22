@@ -304,7 +304,6 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     tick_t write_duration = derived.chunk_disk_write_duration
                             - write_variance/2
                             +  (rand() % write_variance);
-
     
     assert(replicast);
     assert(e);
@@ -326,9 +325,7 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     dws.event.type = DISK_WRITE_START;
     dws.cp = rtr->cp;
     dws.target_num = rtr->target_num;
-    if ((dws.write_qdepth = tp->common.write_qdepth++) == 0)
-        ++track.n_active_targets;
-    dws.qptr = &tp->common.write_qdepth;
+
     insert_event(dws);
 }
 

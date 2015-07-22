@@ -227,9 +227,6 @@ typedef struct disk_write_start {
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // which target is completing the write?
     tick_t expected_done;   // when is this write expected to complete?
-    int write_qdepth;
-    unsigned *qptr;         // pointer to counter to be incremented when this
-    // event is executed.
 } disk_write_start_t;
 //
 // A Disk Write to persistent storage has been initiated for 'cp'
@@ -243,9 +240,6 @@ typedef struct disk_write_completion {
     event_t event;          // disk_write_completion is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // which target is completing the write?
-    int write_qdepth;  // depth of write queue encountered on this target
-    unsigned *qptr;         // pointer to counter to be decremented when this
-                            // event is executed.
 } disk_write_completion_t;
 //
 // A Disk Write to persistent storage has been completed for 'cp''
@@ -259,7 +253,6 @@ typedef struct replica_put_ack {
     event_t event;          // replica_put_ack is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // replica was created on this target
-    int write_qdepth;  // depth of write queue encountered on this target
 } replica_put_ack_t;
 //
 // This event reports to the gateway that one of the replicas for chunk
@@ -272,8 +265,6 @@ typedef struct replica_put_ack {
 typedef struct chunk_put_ack {
     event_t event;          // chunk_put_ack is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
-    int write_qdepth;  // max depth of write queue encountered
-                            // for this chunk
 } chunk_put_ack_t;
 //
 // This event reports that all replicas for chunk 'cp' have been acked.
