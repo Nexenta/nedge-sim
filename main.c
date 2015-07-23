@@ -321,6 +321,7 @@ static void log_event (FILE *f,const event_t *e)
                     e->tllist.time,e->create_time,tag,u.cpack->cp,
                     chunk_seq(u.cpack->cp));
             }
+
             break;
         case NULL_EVENT:
         case NUM_EVENT_TYPES:
@@ -485,6 +486,9 @@ static void simulate (bool do_replicast)
     unsigned i;
     unsigned prior_tenths_done = 0,tenths_done;
     
+    track.max_durations = 200000; // TODO base this on duration / max_rate
+    track.durations = calloc(sizeof *track.durations,track.max_durations);
+    
     track_it.event.create_time = now = 0L;
     track_it.event.tllist.time = config.sample_interval;
     track_it.event.type = TRACK_SAMPLE;
@@ -527,6 +531,7 @@ static void simulate (bool do_replicast)
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
     }
+    free(track.durations);
     memset(&track,0,sizeof(trackers_t));
     memset(&track_prev,0,sizeof(trackers_t));
     track.min_duration = ~0L;
@@ -715,6 +720,7 @@ int main(int argc, const char * argv[]) {
         simulate(true);
         report_rep_chunk_distribution();
         release_rep_targets();
+        free(track.durations);
         fprintf(log_f,"\n");
         fprintf(bid_f,"\n");
     }

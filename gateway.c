@@ -562,6 +562,8 @@ void handle_chunk_put_ack (const event_t *e)
     if (duration < track.min_duration) track.min_duration = duration;
     if (duration > track.max_duration) track.max_duration = duration;
     track.total_duration += duration;
+    if (track.n_completions < track.max_duration)
+        track.durations[track.n_completions] = duration;
     ++track.n_completions;
     n_pending = track.n_initiated - track.n_completions;
     if (!config.terse) {
@@ -577,6 +579,19 @@ void handle_chunk_put_ack (const event_t *e)
     memset(cp,0xFE,sizeof *cp);
     free(cp);
     assert(!track.mbz);
+}
+
+static int tick_compare (const void *a,const void *b)
+//
+// Compare two bids for qsort() by start
+//
+{
+    const tick_t *ba = a;
+    const tick_t *bb = b;
+    
+    return *ba < *bb ? -1
+    : *ba == *bb ? 0
+    : 1;
 }
 
 void report_duration_stats (void)
@@ -603,6 +618,13 @@ void report_duration_stats (void)
                avg_ticks/ticks_per_ms);
         printf("max %3.2f (%.2f * avg)\n",
                ((float)track.max_duration)/ticks_per_ms,max_x);
+        qsort(track.durations,track.n_completions,sizeof(tick_t),tick_compare);
+        
+        printf("median %3.2f 90%% %3.2f 99%% %3.2f\n",
+               track.durations[track.n_completions*50/100]/ticks_per_ms,
+               track.durations[track.n_completions*90/100]/ticks_per_ms,
+               track.durations[track.n_completions*99/100]/ticks_per_ms);
+        
         total_write = (unsigned long)track.n_completions * config.chunk_size *
             config.n_replicas;
         mbs = ((float)total_write)/(1000*1000) / derived.n_targets;
