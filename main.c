@@ -48,7 +48,7 @@ sim_config_t config = {
     .cluster_trip_time = CLUSTER_TRIP_TIME,
     .n_negotiating_groups = N_NEGOTIATING_GROUPS,
     .n_targets_per_ng = N_TARGETS_PER_NG,
-    .mbs_sec_per_target_drive = MBS_SEC_PER_TARGET_DRIVE,
+    .mbs_per_target_drive = MBS_PER_TARGET_DRIVE,
     .n_replicas = N_REPLICAS,
     .chunk_size = CHUNK_SIZE,
     .n_gateways = N_GATEWAYS,
@@ -57,7 +57,6 @@ sim_config_t config = {
     .write_variance = 50,
     .sample_interval = SAMPLE_INTERVAL,
     .seed = 0x12345678,
-    
 };
 
 sim_derived_config_t derived;
@@ -213,14 +212,17 @@ static void log_event (FILE *f,const event_t *e)
         const replica_put_ack_t *rpack;
         const chunk_put_ack_t *cpack;
     } u;
+    gateway_t *gateway;
     
     u.e = e;
     switch (e->type) {
         case CHUNK_PUT_READY:
             if (!config.terse) {
-                fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d\n",
+                fprintf(f,"0x%lx,0x%lx,%s CHUNK_PUT_READY,0x%lx,%d",
                     e->tllist.time,e->create_time,tag,
                     u.cpr->cp,chunk_seq(u.cpr->cp));
+                gateway = chunk_gateway(u.cpr->cp);
+                fprintf(f,",Gateway,%d,chunks,%d\n",gateway->num,gateway->n_chunks);
 	    }
             break;
         case REP_CHUNK_PUT_REQUEST_RECEIVED:
@@ -459,20 +461,26 @@ static void process_event (const event_t *e)
     }
 }
 
-static void start_gateway_thread (tick_t insert_time)
+static void start_gateway_thread (unsigned num)
 
 // replicast: create the first chunk_put_ready for this object, post it
 // once it is scheduled the next chunk_put_request can be sent.
 
 {
     chunk_put_ready_t cpr;
-    chunkput_t *cp = next_cp(insert_time);
+    gateway_t *gateway = calloc(1,sizeof *gateway);
+    chunkput_t *cp;
+    
+    assert(gateway);
+    gateway->num = num;
+    gateway->n_chunks = 0;
+    cp = next_cp(gateway);
     
     assert(cp);
     assert(!cp->mbz);
     
     cpr.event.create_time = now;
-    cpr.event.tllist.time = insert_time;
+    cpr.event.tllist.time = (tick_t)num;
     cpr.event.type = CHUNK_PUT_READY;
     cpr.cp = (chunk_put_handle_t)cp;
     
@@ -503,7 +511,7 @@ static void simulate (bool do_replicast)
     e = (const event_t *)ehead.tllist.next;
     
     for (i = 0; i != config.n_gateways; ++i)
-        start_gateway_thread((tick_t)i);
+        start_gateway_thread(i);
     
     for (now = 0L;
          now < config.sim_duration;
@@ -548,12 +556,14 @@ static void derive_config (void)
 {
     unsigned chunk_udp_packets;
     unsigned chunk_tcp_packets;
+    tick_t per_target_pace;
+    tick_t per_gateway_pace;
     
     derived.n_targets = config.n_negotiating_groups * config.n_targets_per_ng;
     derived.total_write_mbs =
         divup(derived.n_tracked_puts * config.chunk_size,1024L*1024L);
     derived.disk_kb_write_time =
-        (unsigned)((TICKS_PER_SECOND/1000L)/config.mbs_sec_per_target_drive);
+        (unsigned)((TICKS_PER_SECOND/1000L)/config.mbs_per_target_drive);
     chunk_udp_packets = divup(config.chunk_size,UDP_SIZE_BYTES);
     derived.chunk_udp_xmit_duration =
         (config.chunk_size+MINIMUM_UDPV6_BYTES*chunk_udp_packets)*8L;
@@ -563,6 +573,21 @@ static void derive_config (void)
     
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
+    
+    if (!config.utilization)
+        derived.per_gateway_chunk_pace = 1L;
+    else {
+        per_target_pace = derived.chunk_disk_write_duration;
+        if (per_target_pace < derived.chunk_tcp_xmit_duration)
+            per_target_pace = derived.chunk_tcp_xmit_duration;
+        if (per_target_pace < derived.chunk_udp_xmit_duration)
+            per_target_pace = derived.chunk_udp_xmit_duration;
+        
+        per_gateway_pace = (per_target_pace * derived.n_targets) /
+                            (config.n_replicas * config.n_gateways);
+        derived.per_gateway_chunk_pace =
+            divup(per_gateway_pace * 100,config.utilization);
+    }
 }
 
 static FILE *open_outf (const char *type)
@@ -597,7 +622,8 @@ static void usage (const char *progname) {
     fprintf(stderr," [targets_per <#>]");
     fprintf(stderr," [chunk_size <kbytes>]\n");
     fprintf(stderr," [gateways <#>],");
-    fprintf(stderr," [mbs_sec <#>");
+    fprintf(stderr," [mbs <#>");
+    fprintf(stderr," [utilization <%%>\n");
     fprintf(stderr," [bwn <#>]");
     fprintf(stderr," [sample <uSecs>");
     fprintf(stderr," [terse]");
@@ -622,8 +648,8 @@ static void log_config (FILE *f)
             config.sim_duration, config.sim_duration,duration_msecs);
     fprintf(f,"config.cluster_trip_time:%d\n",config.cluster_trip_time);
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
-    fprintf(f,"config.mbs_sec_per_target_drive:%d\n",
-            config.mbs_sec_per_target_drive);
+    fprintf(f,"config.mbs_per_target_drive:%d\n",
+            config.mbs_per_target_drive);
     fprintf(f,"config.n_negotiating_groups:%d\n",config.n_negotiating_groups);
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
@@ -642,6 +668,9 @@ static void log_config (FILE *f)
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
+    fprintf(f,"config.utilization:%d%%",config.utilization);
+    fprintf(f,"derived.per_gateway_chunk_pace;%ld\n",
+            derived.per_gateway_chunk_pace);
     if (config.terse) fprintf(f,"config.terse\n");
 }
 
@@ -668,8 +697,10 @@ static void customize_config (int argc, const char ** argv)
             config.sim_duration = atoi(argv[1]) * (TICKS_PER_SECOND/1000);
         else if (0 == strcmp(*argv,"seed"))
             config.seed = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"mbs_sec"))
-            config.mbs_sec_per_target_drive = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"mbs"))
+            config.mbs_per_target_drive = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"utilization"))
+            config.utilization = atoi(argv[1]);
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
         else if (0 == strcmp(*argv,"bwm"))

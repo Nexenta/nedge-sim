@@ -77,6 +77,8 @@ typedef struct trackers {
     tick_t min_duration;
     tick_t max_duration;
     tick_t total_duration;
+    tick_t aggregate_pace_delay;
+    unsigned n_pace_delays;
     unsigned long n_initiated;
     unsigned long n_writes_initiated;
     unsigned long n_writes_completed;
@@ -103,7 +105,7 @@ typedef struct chunk_put_ready {
 //
 // The next Chunk Put for an object is to be handled by the Gateway.
 //
-// This is produced on the GAteway while handling the object_put_ready event
+// This is produced on the Gateway while handling the object_put_ready event
 // (for the initial chunk) the subsequent events are generated when the gateway
 // has credit and so that the next transmission will not start before the prior
 // chunk has been transmitted.
@@ -328,6 +330,11 @@ typedef struct bid {
     unsigned queue_depth;
 } bid_t;
 
+typedef struct gateway {
+    unsigned num;
+    unsigned n_chunks;
+} gateway_t;
+
 //
 // A bid by 'target_num' to store a chunk within the time range 'start'..'lim'
 //
@@ -355,7 +362,7 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
     unsigned sig;               // must be 0xABCD
     unsigned seqnum;             // sequence # (starting at 1) for all chunks
     // put as part of this simulation
-    unsigned gateway;           // which gateway?
+    gateway_t *gateway;         // which gateway?
     tick_t   started;           // When processing of this chunk started
     tick_t   done;              // When processing of this chunk completed
     unsigned replicas_unacked;  // Number of replicas not yet acked
@@ -369,7 +376,7 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
 } chunkput_t;
 
 // Gateway event handlers - in gateway.c
-extern chunkput_t *next_cp (tick_t start_tikme);
+extern chunkput_t *next_cp (gateway_t *gateway);
 extern void handle_chunk_put_ready (const event_t *e);
 extern void handle_rep_chunk_put_response_received (const event_t *e);
 extern void handle_tcp_reception_ack (const event_t *e);
@@ -377,6 +384,8 @@ extern void handle_replica_put_ack (const event_t *e);
 extern void handle_chunk_put_ack (const event_t *e);
 extern void report_duration_stats (void);
 extern unsigned chunk_seq (chunk_put_handle_t cph); // utility to fetch seq #
+extern gateway_t *chunk_gateway (chunk_put_handle_t cph);
+    // utility to fetch gateway_t given chunk put handle
 
 extern void init_seqnum(void);
 

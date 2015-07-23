@@ -21,20 +21,21 @@ typedef struct sim_config {
     unsigned n_replicas;                // # of replicas per chunk, usually 3
     unsigned n_targets_per_ng;          // How many targets in each Negotiating
                                         // Group. This should be 2-4x n_replicas
-    unsigned mbs_sec_per_target_drive;  // How fast do the target drives write?
+    unsigned mbs_per_target_drive;  // How fast do the target drives write?
                                         // Fast SSDs circa 2015 are 500 MB/sec.
                                         // Note that if this is faster than
                                         // 10 Gb/sec then the network will be
                                         // the bottleneck.
-
+    unsigned utilization;           // if non-zero, limit the gateways to
+                                    // producing this % of the possible IOPs.
     unsigned chunk_size;            // size of each chunk.
                                     // Actual size is variable.
                                     // Recommend simulation values: 4K,64K,1M
     unsigned long sim_duration;     // Simulation duration in network bit-ticks.
     unsigned n_gateways;            // # of gateways producing chunks
     unsigned write_variance;        // writes are +/- (write/(variance/2))
-    			            // variance  is  1/nth the whole duration
-				    // centered on 1.0
+                                    // variance  is  1/nth the whole duration
+                                    // centered on 1.0
     bool do_replicast;              // Test replicast
     bool do_ch;                     // Test Consistent Hash 
     unsigned seed;                  // seeds random # generators
@@ -52,7 +53,7 @@ extern sim_config_t config;
 #define CLUSTER_TRIP_TIME       10000    // 1 microsecond
 #define N_NEGOTIATING_GROUPS 50
 #define N_TARGETS_PER_NG 9
-#define MBS_SEC_PER_TARGET_DRIVE 400
+#define MBS_PER_TARGET_DRIVE 400
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
 #define N_GATEWAYS 40
@@ -72,6 +73,8 @@ typedef struct sim_derived_config {
     tick_t chunk_udp_xmit_duration;     // How long to UDP send a chunk?
     tick_t chunk_tcp_xmit_duration;     // How long to TCP send a chunk?
     tick_t chunk_disk_write_duration;   // How long to write a chunk to disk?
+    tick_t  per_gateway_chunk_pace; // Minimum # of ticks between chunkputs
+                                    // from any given gateway.
 } sim_derived_config_t;
 
 extern sim_derived_config_t derived;

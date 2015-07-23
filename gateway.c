@@ -46,7 +46,7 @@
 
 static unsigned n_chunkputs = 0;
 
-chunkput_t *next_cp (tick_t start_time)
+chunkput_t *next_cp (gateway_t *gateway)
 {
     chunkput_t *cp;
     
@@ -59,8 +59,8 @@ chunkput_t *next_cp (tick_t start_time)
     cp->sig = 0xABCD;
     cp->seqnum = ++n_chunkputs;
     ++track.n_initiated;
-    cp->started = start_time;
     cp->replicas_unacked = config.n_replicas;
+    cp->gateway = gateway;
     assert(cp->replicas_unacked);
     
     if (replicast)
@@ -127,23 +127,34 @@ static void select_nonrep_targets (chunkput_t *c)
     fprintf(log_f,"\n");
 }
 
-static void insert_next_chunk_put_ready (const chunkput_t *cp,
+static void insert_next_chunk_put_ready (chunkput_t *cp,
                                          tick_t insert_time)
 
-// Generate thenext Chunk Put Ready event
+// Generate thenext Chunk Put Ready event at insert_time, but:
+//      Cannot be earlier than computed 'pace_time' per gateway.
+//      Cannot be earlier than next tick (now+1)
 
 {
     chunk_put_ready_t cpr;
+    tick_t pace_time;
+    tick_t time = insert_time;
     
     assert(cp);
+    assert(cp->gateway);
+    pace_time = cp->gateway->n_chunks++ * derived.per_gateway_chunk_pace;
     
+    if (time < pace_time) time = pace_time;
+    if (time <= now) time = now + 1;
+
+    if (time > insert_time) {
+        ++track.n_pace_delays;
+        track.aggregate_pace_delay += (time - insert_time);
+    }
     cpr.event.create_time = now;
-    cpr.event.tllist.time = insert_time;
-    
-    if (insert_time <= now) insert_time = now + 1;
-    
+    cpr.event.tllist.time = time;
     cpr.event.type = CHUNK_PUT_READY;
     cpr.cp = (chunk_put_handle_t)cp;
+    cp->started = time;
         
     insert_event(cpr);
 }
@@ -453,7 +464,7 @@ void handle_rep_chunk_put_response_received (const event_t *e)
     next_chunk_time = rendezvous_xfer_event.event.tllist.time;
     next_chunk_time -= 3*config.cluster_trip_time;
     if (next_chunk_time <= now) next_chunk_time = now+1;
-    if ((new_cp = next_cp(next_chunk_time)) != NULL)
+    if ((new_cp = next_cp(cp->gateway)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_chunk_time);
 }
 
@@ -497,7 +508,7 @@ void handle_tcp_reception_ack (const event_t *e)
     if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->u.nonrep.acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
-    else if ((new_cp = next_cp(next_tcp_time)) != NULL)
+    else if ((new_cp = next_cp(cp->gateway)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_tcp_time);
 }
 
@@ -601,7 +612,7 @@ void report_duration_stats (void)
 {
     float avg_ticks,min_x,max_x,mbs,msecs,chunks_per_t;
     unsigned long total_write;
-    
+    float target_capacity;
     const float ticks_per_ms = TICKS_PER_SECOND/(float)1000;
 
     printf("\nPerformance results:");
@@ -609,10 +620,15 @@ void report_duration_stats (void)
         msecs = ((double_t)now)/ticks_per_ms;
         printf("\nTotal unique chunks: initiated %lu completed %lu ",
                track.n_initiated,track.n_completions);
+        if (config.utilization)
+            printf("target utilization %d%% ",config.utilization);
         printf("execution-time %.1f ms\n",msecs);
+        
         avg_ticks = (float)track.total_duration/(float)track.n_completions;
         min_x = (float)track.min_duration/avg_ticks;
         max_x = ((float)track.max_duration)/avg_ticks;
+        printf("# Pacing Delays: %d, %3.2f msecs\n",track.n_pace_delays,
+               track.aggregate_pace_delay/ticks_per_ms);
         printf("Chunk write latency (ms): min %3.2f (%.2f * avg) average %f ",
                ((float)track.min_duration)/ticks_per_ms,min_x,
                avg_ticks/ticks_per_ms);
@@ -631,10 +647,13 @@ void report_duration_stats (void)
         chunks_per_t =
             (float)track.n_completions *
             ((float)config.n_replicas)/derived.n_targets;
-        printf("\nAverage written per target: %6.2fMB   or %4.1f chunk-replicas\n",
-               mbs, chunks_per_t);
-        printf("Average target throughput:  %6.2fMB/s or %4.1f chunk-replicas/s\n",
-               mbs*1000/msecs, chunks_per_t*1000/msecs);
+        printf("\nAverage written per target: %6.2fMBs",mbs);
+        printf(" or %4.1f chunk-replicas\n",chunks_per_t);
+        printf("Average target throughput: %6.2f MB/s ",mbs*1000/msecs);
+        target_capacity = ((float)config.mbs_per_target_drive)*100/
+            (config.n_replicas*config.utilization);
+        printf(" (versus target rate %6.2f MB/s",target_capacity);
+        printf(" or %4.1f chunk-replicas/s\n",chunks_per_t*1000/msecs);
         mbs = ((float)total_write)/(1024*1024) / config.n_gateways;
         chunks_per_t = (float)track.n_completions *
                         ((float)config.n_replicas)/config.n_gateways;
@@ -654,7 +673,7 @@ unsigned chunk_seq (chunk_put_handle_t cph)
     return cp->seqnum;
 }
 
-unsigned chunk_gateway (chunk_put_handle_t cph)
+gateway_t *chunk_gateway (chunk_put_handle_t cph)
 {
     const chunkput_t *cp = (const chunkput_t *)cph;
     
@@ -662,4 +681,3 @@ unsigned chunk_gateway (chunk_put_handle_t cph)
     assert(cp->seqnum);
     return cp->gateway;
 }
-
