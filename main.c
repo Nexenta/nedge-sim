@@ -353,17 +353,24 @@ for ((target) = (ng);\
 
 static void inflight_report (FILE *f,const char *tag)
 {
-    unsigned t,sum;
+    unsigned t;
+    unsigned sum,min,max;
+    float avg;
     target_t *tp;
     
-    fprintf(f,"%s",tag);
-    sum = 0;
+    fprintf(f,"%s,0x%lx",tag,now);
+    sum = max = avg = 0; min = 999999;
     for (t = 0; t != derived.n_targets; ++t) {
         tp = replicast ? rep_target(t) : nonrep_target(t);
         fprintf(f,",%d",tp->total_inflight);
         sum += tp->total_inflight;
+	if (min > tp->total_inflight) min = tp->total_inflight;
+	if (max < tp->total_inflight) max = tp->total_inflight;
     }
-    fprintf(f,",AVG,%2.2f\n",((float)sum)/derived.n_targets);
+    avg = (float)sum/derived.n_targets;
+    if (avg)
+    	fprintf(f,"\nper-target chunks in-progress: min %d (%.2f * avg) average %3.1f max %d (%.2f * avg)\n",
+		min, (float)min/avg, avg, max, (float)max/avg);  
 }
 
 static void track_report (FILE *inflight_f)
@@ -390,8 +397,10 @@ static void track_report (FILE *inflight_f)
        
         fprintf(log_f," inbound_reservation_conflicts,%2.2f%%\n",pc);
     }
-    inflight_report(inflight_f,tag);
     fflush(log_f);
+
+    if (now > 0)
+    	inflight_report(inflight_f,tag);
 
     memcpy(&track_prev, &track, sizeof(track));
 }
@@ -754,6 +763,7 @@ int main(int argc, const char * argv[]) {
         free(track.durations);
         fprintf(log_f,"\n");
         fprintf(bid_f,"\n");
+        fprintf(inflight_f,"\n");
     }
     if (config.do_ch) {
         printf     ("\nSimulating CH/TCP ***********************************************\n");
@@ -768,5 +778,7 @@ int main(int argc, const char * argv[]) {
     }
     fclose(log_f);
     fclose(bid_f);
+    fclose(inflight_f);
+
     exit(0);
 }
