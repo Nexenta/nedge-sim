@@ -598,8 +598,8 @@ static void derive_config (void)
         if (per_target_pace < derived.chunk_udp_xmit_duration)
             per_target_pace = derived.chunk_udp_xmit_duration;
         
-        per_gateway_pace = (per_target_pace * derived.n_targets) /
-                            (config.n_replicas * config.n_gateways);
+        per_target_pace = divup(per_target_pace,config.n_replicas);
+        per_gateway_pace=per_target_pace * derived.n_targets/config.n_gateways;
         derived.per_gateway_chunk_pace =
             divup(per_gateway_pace * 100,config.utilization);
     }
@@ -683,7 +683,7 @@ static void log_config (FILE *f)
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
-    fprintf(f,"config.utilization:%d%%",config.utilization);
+    fprintf(f,"config.utilization:%d%%\n",config.utilization);
     fprintf(f,"derived.per_gateway_chunk_pace;%ld\n",
             derived.per_gateway_chunk_pace);
     if (config.terse) fprintf(f,"config.terse\n");
