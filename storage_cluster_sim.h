@@ -87,7 +87,7 @@ typedef struct trackers {
     unsigned long n_reservation_conflicts;
     unsigned long n_reservations;
     tick_t *durations;      // first n durations captured for reporting.
-    unsigned max_durations; // # allocated in durations
+    unsigned max_tracked; // # allocated in durations
     bool     drain; // true when in drain mode
     unsigned mbz;
 } trackers_t;

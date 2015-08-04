@@ -573,7 +573,7 @@ void handle_chunk_put_ack (const event_t *e)
     if (duration < track.min_duration) track.min_duration = duration;
     if (duration > track.max_duration) track.max_duration = duration;
     track.total_duration += duration;
-    if (track.n_completions < track.max_duration)
+    if (track.n_completions < track.max_tracked)
         track.durations[track.n_completions] = duration;
     ++track.n_completions;
     n_pending = track.n_initiated - track.n_completions;

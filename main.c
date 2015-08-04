@@ -509,8 +509,8 @@ static void simulate (bool do_replicast)
     unsigned i;
     unsigned prior_tenths_done = 0,tenths_done;
     
-    track.max_durations = 200000; // TODO base this on duration / max_rate
-    track.durations = calloc(sizeof *track.durations,track.max_durations);
+    track.max_tracked = 200000; // TODO base this on duration / max_rate
+    track.durations = calloc(sizeof *track.durations,track.max_tracked);
     
     track_it.event.create_time = now = 0L;
     track_it.event.tllist.time = config.sample_interval;
