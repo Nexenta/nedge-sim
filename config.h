@@ -73,8 +73,7 @@ typedef struct sim_derived_config {
     tick_t chunk_udp_xmit_duration;     // How long to UDP send a chunk?
     tick_t chunk_tcp_xmit_duration;     // How long to TCP send a chunk?
     tick_t chunk_disk_write_duration;   // How long to write a chunk to disk?
-    tick_t  per_gateway_chunk_pace; // Minimum # of ticks between chunkputs
-                                    // from any given gateway.
+    float   credit_multiplier;      // xmit credits per tick for gateway pacing
 } sim_derived_config_t;
 
 extern sim_derived_config_t derived;

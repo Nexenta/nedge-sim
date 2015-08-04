@@ -136,17 +136,24 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
 
 {
     chunk_put_ready_t cpr;
-    tick_t pace_time;
+    tick_t credit;
     tick_t time = insert_time;
+    gateway_t *gw;
     
     assert(cp);
     assert(cp->gateway);
-    pace_time = ++cp->gateway->n_chunks * derived.per_gateway_chunk_pace;
-    
-    if (time < pace_time) time = pace_time;
+    gw = cp->gateway;
+ 
     if (time <= now) time = now + 1;
-
-    if (time > insert_time) {
+    
+    credit = (tick_t)((time - gw->last_credited) * derived.credit_multiplier);
+    gw->xmit_credit += credit;
+    gw->xmit_credit -= derived.chunk_disk_write_duration;
+    if (gw->xmit_credit < 0) {
+        credit = -gw->xmit_credit;
+        credit = (tick_t)(credit * derived.credit_multiplier);
+        
+        time = time + credit;
         ++track.n_pace_delays;
         track.aggregate_pace_delay += (time - insert_time);
     }
@@ -641,9 +648,9 @@ void report_duration_stats (void)
         qsort(track.durations,n_tracked,sizeof(tick_t),tick_compare);
         
         printf("median %3.2f 90%% %3.2f 99%% %3.2f\n",
-               track.durations[track.n_completions*50/100]/ticks_per_ms,
-               track.durations[track.n_completions*90/100]/ticks_per_ms,
-               track.durations[track.n_completions*99/100]/ticks_per_ms);
+               track.durations[n_tracked*50/100]/ticks_per_ms,
+               track.durations[n_tracked*90/100]/ticks_per_ms,
+               track.durations[n_tracked*99/100]/ticks_per_ms);
         
         total_write = (unsigned long)track.n_completions * config.chunk_size *
             config.n_replicas;

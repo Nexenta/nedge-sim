@@ -86,7 +86,7 @@ typedef struct trackers {
     unsigned n_active_targets;    // How many targets are currently writing?
     unsigned long n_reservation_conflicts;
     unsigned long n_reservations;
-    tick_t *durations;      // first n durations captured for reporting.
+    tick_t   *durations;      // first n durations captured for reporting.
     unsigned max_tracked; // # allocated in durations
     bool     drain; // true when in drain mode
     unsigned mbz;
@@ -333,6 +333,8 @@ typedef struct bid {
 typedef struct gateway {
     unsigned num;
     unsigned n_chunks;
+    signed long xmit_credit;
+    tick_t      last_credited;
 } gateway_t;
 
 //

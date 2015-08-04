@@ -571,8 +571,6 @@ static void derive_config (void)
 {
     unsigned chunk_udp_packets;
     unsigned chunk_tcp_packets;
-    tick_t per_target_pace;
-    tick_t per_gateway_pace;
     
     derived.n_targets = config.n_negotiating_groups * config.n_targets_per_ng;
     derived.total_write_mbs =
@@ -590,19 +588,11 @@ static void derive_config (void)
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
     
     if (!config.utilization)
-        derived.per_gateway_chunk_pace = 1L;
-    else {
-        per_target_pace = derived.chunk_disk_write_duration;
-        if (per_target_pace < derived.chunk_tcp_xmit_duration)
-            per_target_pace = derived.chunk_tcp_xmit_duration;
-        if (per_target_pace < derived.chunk_udp_xmit_duration)
-            per_target_pace = derived.chunk_udp_xmit_duration;
-        
-        per_target_pace = divup(per_target_pace,config.n_replicas);
-        per_gateway_pace=per_target_pace * derived.n_targets/config.n_gateways;
-        derived.per_gateway_chunk_pace =
-            divup(per_gateway_pace * 100,config.utilization);
-    }
+        derived.credit_multiplier = 2.0;
+    else
+        derived.credit_multiplier =
+            ((float)derived.n_targets)*config.utilization /
+            (((float)config.n_gateways)*config.n_replicas*100.0);
 }
 
 static FILE *open_outf (const char *type)
@@ -684,8 +674,7 @@ static void log_config (FILE *f)
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
     fprintf(f,"config.utilization:%d%%\n",config.utilization);
-    fprintf(f,"derived.per_gateway_chunk_pace;%ld\n",
-            derived.per_gateway_chunk_pace);
+    fprintf(f,"derived.credit_multipler:%0.3f\n",derived.credit_multiplier);
     if (config.terse) fprintf(f,"config.terse\n");
 }
 
