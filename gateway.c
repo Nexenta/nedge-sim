@@ -136,7 +136,7 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
 
 {
     chunk_put_ready_t cpr;
-    tick_t credit;
+    signed long credit;
     tick_t time = insert_time;
     gateway_t *gw;
     
@@ -148,8 +148,11 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
     
     credit = (tick_t)((time - gw->last_credited) * derived.credit_multiplier);
     gw->xmit_credit += credit;
+    gw->last_credited = time;
     gw->xmit_credit -= derived.chunk_disk_write_duration;
-    if (gw->xmit_credit < 0) {
+    if (gw->xmit_credit > (signed long)(2*derived.chunk_disk_write_duration))
+        gw->xmit_credit = (signed long)(2*derived.chunk_disk_write_duration);
+    else if (gw->xmit_credit < 0) {
         credit = -gw->xmit_credit;
         credit = (tick_t)(credit * derived.credit_multiplier);
         
@@ -157,6 +160,7 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
         ++track.n_pace_delays;
         track.aggregate_pace_delay += (time - insert_time);
     }
+
     cpr.event.create_time = now;
     cpr.event.tllist.time = time;
     cpr.event.type = CHUNK_PUT_READY;
