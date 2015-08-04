@@ -354,12 +354,16 @@ for ((target) = (ng);\
 static void inflight_report (FILE *f,const char *tag)
 {
     unsigned t,sum;
+    unsigned max_chunks_per_target =
+        (unsigned)(now / derived.chunk_disk_write_duration);
     target_t *tp;
     
-    fprintf(f,"%s",tag);
+    fprintf(f,"%s,now,0x%lx,max_chunks,%d,targets,",
+            tag,now,max_chunks_per_target);
     sum = 0;
     for (t = 0; t != derived.n_targets; ++t) {
         tp = replicast ? rep_target(t) : nonrep_target(t);
+
         fprintf(f,",%d",tp->total_inflight);
         sum += tp->total_inflight;
     }
