@@ -141,7 +141,7 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
     
     assert(cp);
     assert(cp->gateway);
-    pace_time = cp->gateway->n_chunks++ * derived.per_gateway_chunk_pace;
+    pace_time = ++cp->gateway->n_chunks * derived.per_gateway_chunk_pace;
     
     if (time < pace_time) time = pace_time;
     if (time <= now) time = now + 1;
@@ -650,8 +650,8 @@ void report_duration_stats (void)
         printf("\nAverage written per target: %6.2fMBs",mbs);
         printf(" or %4.1f chunk-replicas\n",chunks_per_t);
         printf("Average target throughput: %6.2f MB/s ",mbs*1000/msecs);
-        target_capacity = ((float)config.mbs_per_target_drive)*100/
-            (config.n_replicas*config.utilization);
+        target_capacity =
+            ((float)config.mbs_per_target_drive)*config.utilization/100;
         printf(" (versus target rate %6.2f MB/s",target_capacity);
         printf(" or %4.1f chunk-replicas/s\n",chunks_per_t*1000/msecs);
         mbs = ((float)total_write)/(1024*1024) / config.n_gateways;
