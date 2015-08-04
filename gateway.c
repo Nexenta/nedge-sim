@@ -612,6 +612,7 @@ void report_duration_stats (void)
 {
     float avg_ticks,min_x,max_x,mbs,msecs,chunks_per_t;
     unsigned long total_write;
+    unsigned n_tracked;
     float target_capacity;
     const float ticks_per_ms = TICKS_PER_SECOND/(float)1000;
 
@@ -634,7 +635,10 @@ void report_duration_stats (void)
                avg_ticks/ticks_per_ms);
         printf("max %3.2f (%.2f * avg)\n",
                ((float)track.max_duration)/ticks_per_ms,max_x);
-        qsort(track.durations,track.n_completions,sizeof(tick_t),tick_compare);
+        n_tracked = (unsigned)track.n_completions;
+        if (n_tracked > track.max_tracked) n_tracked = track.max_tracked;
+        
+        qsort(track.durations,n_tracked,sizeof(tick_t),tick_compare);
         
         printf("median %3.2f 90%% %3.2f 99%% %3.2f\n",
                track.durations[track.n_completions*50/100]/ticks_per_ms,
