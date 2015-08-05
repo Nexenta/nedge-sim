@@ -134,6 +134,14 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
 //      Cannot be earlier than computed 'pace_time' per gateway.
 //      Cannot be earlier than next tick (now+1)
 
+// We run a per gateway leaky_bucket to pace transmissions.
+// Credits are granted at the tick_rate
+// Credits are charged at 'derived.gateway_xmit_charge'
+//
+// A new chunk put is delayed until the post put credits will be positive.
+//
+// Maximum credit accumulation is 2x chunks
+
 {
     chunk_put_ready_t cpr;
     signed long credit;
@@ -146,19 +154,18 @@ static void insert_next_chunk_put_ready (chunkput_t *cp,
  
     if (time <= now) time = now + 1;
     
-    credit = (tick_t)((time - gw->last_credited) * derived.credit_multiplier);
+    credit = time - gw->last_credited;
     gw->xmit_credit += credit;
     gw->last_credited = time;
-    gw->xmit_credit -= derived.chunk_disk_write_duration;
+    gw->xmit_credit -= derived.gateway_xmit_charge;
     if (gw->xmit_credit > (signed long)(2*derived.chunk_disk_write_duration))
         gw->xmit_credit = (signed long)(2*derived.chunk_disk_write_duration);
     else if (gw->xmit_credit < 0) {
         credit = -gw->xmit_credit;
-        credit = (tick_t)(credit * derived.credit_multiplier);
         
         time = time + credit;
         ++track.n_pace_delays;
-        track.aggregate_pace_delay += (time - insert_time);
+        track.aggregate_pace_delay += credit;
     }
 
     cpr.event.create_time = now;
@@ -624,7 +631,6 @@ void report_duration_stats (void)
     float avg_ticks,min_x,max_x,mbs,msecs,chunks_per_t;
     unsigned long total_write;
     unsigned n_tracked;
-    float target_capacity;
     const float ticks_per_ms = TICKS_PER_SECOND/(float)1000;
 
     printf("\nPerformance results:");
@@ -632,8 +638,6 @@ void report_duration_stats (void)
         msecs = ((double_t)now)/ticks_per_ms;
         printf("\nTotal unique chunks: initiated %lu completed %lu ",
                track.n_initiated,track.n_completions);
-        if (config.utilization)
-            printf("target utilization %d%% ",config.utilization);
         printf("execution-time %.1f ms\n",msecs);
         
         avg_ticks = (float)track.total_duration/(float)track.n_completions;
@@ -665,10 +669,7 @@ void report_duration_stats (void)
         printf("\nAverage written per target: %6.2fMBs",mbs);
         printf(" or %4.1f chunk-replicas\n",chunks_per_t);
         printf("Average target throughput: %6.2f MB/s ",mbs*1000/msecs);
-        target_capacity =
-            ((float)config.mbs_per_target_drive)*config.utilization/100;
-        printf(" (versus target rate %6.2f MB/s",target_capacity);
-        printf(" or %4.1f chunk-replicas/s\n",chunks_per_t*1000/msecs);
+
         mbs = ((float)total_write)/(1024*1024) / config.n_gateways;
         chunks_per_t = (float)track.n_completions *
                         ((float)config.n_replicas)/config.n_gateways;

@@ -359,7 +359,7 @@ static void inflight_report (FILE *f,const char *tag)
         (unsigned)(now / derived.chunk_disk_write_duration);
     target_t *tp;
     
-    fprintf(f,"%s,now,0x%lx,max_chunks,%d,targets,",
+    fprintf(f,"%s,now,0x%lx,max_chunks,%d,targets",
             tag,now,max_chunks_per_target);
     sum = max = avg = 0; min = 999999;
     for (t = 0; t != derived.n_targets; ++t) {
@@ -374,7 +374,7 @@ static void inflight_report (FILE *f,const char *tag)
     if (avg) {
 	fprintf(f,"\nper-target chunks-in-progress: min %d (%.2f * avg) ",
 	    min,((float)min)/avg);
-	fprintf(f," average %3.1f max %d (%.2f * agv)\n",
+	fprintf(f," average %3.1f max %d (%.2f * avg)\n",
 	    avg,max,((float)max)/avg);
     }
 }
@@ -571,6 +571,7 @@ static void derive_config (void)
 {
     unsigned chunk_udp_packets;
     unsigned chunk_tcp_packets;
+    unsigned gateway_xmit_time;
     
     derived.n_targets = config.n_negotiating_groups * config.n_targets_per_ng;
     derived.total_write_mbs =
@@ -586,13 +587,15 @@ static void derive_config (void)
     
     derived.chunk_disk_write_duration =
         divup(config.chunk_size,1024)*derived.disk_kb_write_time;
-    
-    if (!config.utilization)
-        derived.credit_multiplier = 2.0;
-    else
-        derived.credit_multiplier =
-            ((float)derived.n_targets)*config.utilization /
-            (((float)config.n_gateways)*config.n_replicas*100.0);
+   
+    if (!config.gateway_mbs)
+        derived.gateway_xmit_charge = 0;
+    else {
+        gateway_xmit_time =
+            (unsigned)((TICKS_PER_SECOND/1000L)/config.gateway_mbs);
+        derived.gateway_xmit_charge =
+            divup(config.chunk_size,1024)*gateway_xmit_time;
+    }
 }
 
 static FILE *open_outf (const char *type)
@@ -628,7 +631,7 @@ static void usage (const char *progname) {
     fprintf(stderr," [chunk_size <kbytes>]\n");
     fprintf(stderr," [gateways <#>],");
     fprintf(stderr," [mbs <#>");
-    fprintf(stderr," [utilization <%%>\n");
+    fprintf(stderr," [gateway_mbs <#>");
     fprintf(stderr," [bwn <#>]");
     fprintf(stderr," [sample <uSecs>");
     fprintf(stderr," [terse]");
@@ -655,6 +658,7 @@ static void log_config (FILE *f)
     fprintf(f,"confg.chunk_size:%d\n",config.chunk_size);
     fprintf(f,"config.mbs_per_target_drive:%d\n",
             config.mbs_per_target_drive);
+    fprintf(f,"derived.gateway_xmit_charge:%lu\n",derived.gateway_xmit_charge);
     fprintf(f,"config.n_negotiating_groups:%d\n",config.n_negotiating_groups);
     fprintf(f,"config.n_replicas:%d\n",config.n_replicas);
     fprintf(f,"config.n_targets_per_ng:%d\n",config.n_targets_per_ng);
@@ -673,8 +677,6 @@ static void log_config (FILE *f)
     fprintf(f,"config.seed:%d\n",config.seed);
     fprintf(f,"config.replicast_packet_processing_penalty:%d\n",
             config.replicast_packet_processing_penalty);
-    fprintf(f,"config.utilization:%d%%\n",config.utilization);
-    fprintf(f,"derived.credit_multipler:%0.3f\n",derived.credit_multiplier);
     if (config.terse) fprintf(f,"config.terse\n");
 }
 
@@ -703,8 +705,8 @@ static void customize_config (int argc, const char ** argv)
             config.seed = atoi(argv[1]);
         else if (0 == strcmp(*argv,"mbs"))
             config.mbs_per_target_drive = atoi(argv[1]);
-        else if (0 == strcmp(*argv,"utilization"))
-            config.utilization = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"gateway_mbs"))
+            config.gateway_mbs = atoi(argv[1]);
         else if (0 == strcmp(*argv,"cluster_trip_time"))
             config.cluster_trip_time = atoi(argv[1]);
         else if (0 == strcmp(*argv,"bwm"))

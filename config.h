@@ -26,8 +26,7 @@ typedef struct sim_config {
                                         // Note that if this is faster than
                                         // 10 Gb/sec then the network will be
                                         // the bottleneck.
-    unsigned utilization;           // if non-zero, limit the gateways to
-                                    // producing this % of the possible IOPs.
+    unsigned gateway_mbs;       // How fast is each gateway allowed to xmit?
     unsigned chunk_size;            // size of each chunk.
                                     // Actual size is variable.
                                     // Recommend simulation values: 4K,64K,1M
@@ -73,7 +72,8 @@ typedef struct sim_derived_config {
     tick_t chunk_udp_xmit_duration;     // How long to UDP send a chunk?
     tick_t chunk_tcp_xmit_duration;     // How long to TCP send a chunk?
     tick_t chunk_disk_write_duration;   // How long to write a chunk to disk?
-    float   credit_multiplier;      // xmit credits per tick for gateway pacing
+    tick_t  gateway_xmit_charge;        // charge to gateway credit bucket for
+                                        // each chunk put request queued.
 } sim_derived_config_t;
 
 extern sim_derived_config_t derived;
