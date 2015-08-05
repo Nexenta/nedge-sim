@@ -49,6 +49,7 @@ sim_config_t config = {
     .n_negotiating_groups = N_NEGOTIATING_GROUPS,
     .n_targets_per_ng = N_TARGETS_PER_NG,
     .mbs_per_target_drive = MBS_PER_TARGET_DRIVE,
+    .gateway_mbs = GATEWAY_MBS,
     .n_replicas = N_REPLICAS,
     .chunk_size = CHUNK_SIZE,
     .n_gateways = N_GATEWAYS,
@@ -509,7 +510,7 @@ static void simulate (bool do_replicast)
     unsigned i;
     unsigned prior_tenths_done = 0,tenths_done;
     
-    track.max_tracked = 200000; // TODO base this on duration / max_rate
+    track.max_tracked = 250000; // TODO base this on duration / max_rate
     track.durations = calloc(sizeof *track.durations,track.max_tracked);
     
     track_it.event.create_time = now = 0L;
@@ -521,8 +522,12 @@ static void simulate (bool do_replicast)
     replicast = do_replicast;
     srand(config.seed+1);
 
-    printf("\n%d Gateways putting %dKB Chunks\n",config.n_gateways,
+    printf("\n%d Gateways (@%d MBS each) putting %d replicas of %dKB Chunks",
+           config.n_gateways,config.gateway_mbs,config.n_replicas,
            config.chunk_size/1024);
+    printf(" to %d targets (@%d MBS each)\n",
+           derived.n_targets,config.mbs_per_target_drive);
+    
     e = (const event_t *)ehead.tllist.next;
     
     for (i = 0; i != config.n_gateways; ++i)

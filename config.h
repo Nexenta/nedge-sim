@@ -53,6 +53,7 @@ extern sim_config_t config;
 #define N_NEGOTIATING_GROUPS 50
 #define N_TARGETS_PER_NG 9
 #define MBS_PER_TARGET_DRIVE 400
+#define GATEWAY_MBS 400
 #define N_REPLICAS 3
 #define CHUNK_SIZE (128*1024)
 #define N_GATEWAYS 40
