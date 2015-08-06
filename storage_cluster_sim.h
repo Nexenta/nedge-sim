@@ -414,6 +414,7 @@ extern void init_nonrep_targets(unsigned n_targets);
 extern void report_nonrep_chunk_distribution(void);
 extern void release_nonrep_targets(void);
 extern target_t *nonrep_target (unsigned target_num);
+extern void omniscient_nonrep_target_select (chunkput_t *c);
 #endif
 
 

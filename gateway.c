@@ -222,7 +222,10 @@ void handle_chunk_put_ready (const event_t *e)
             insert_event(cprr);
     }
     else {
-        select_nonrep_targets(cp);
+        if (config.omniscient)
+            omniscient_nonrep_target_select(cp);
+        else
+            select_nonrep_targets(cp);
         next_tcp_replica_xmit(cp,e->tllist.time);
     }
  }

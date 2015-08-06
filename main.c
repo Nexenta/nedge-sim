@@ -733,6 +733,10 @@ static void customize_config (int argc, const char ** argv)
             config.do_ch = true;
             --argv,++argc;
         }
+        else if (0 == strcmp(*argv,"omniscient")) {
+            config.omniscient = true;
+            --argv,++argc;
+        }
         else if (0 == strcmp(*argv,"penalty"))
             config.replicast_packet_processing_penalty = atoi(argv[1]);
         else if (0 == strcmp(*argv,"terse")) {

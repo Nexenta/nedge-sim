@@ -57,6 +57,47 @@ void handle_disk_write_completion (const event_t *e)
     insert_event (rpa);
 }
 
+static bool already_selected (
+                              unsigned tgt,
+                              unsigned n_selected,
+                              const unsigned *t)
+{
+    for (;n_selected;--n_selected,++t) {
+        if (*t == tgt)
+            return true;
+    }
+    return false;
+}
+
+void omniscient_nonrep_target_select (chunkput_t *c)
+{
+    unsigned t1,t2,n_selected;
+    unsigned best;
+    target_t *tp;
+    
+    for (n_selected=0;n_selected != config.n_replicas;++n_selected) {
+        t2 = t1 = rand() % derived.n_targets;
+        tp = nonrep_target(t2);
+        best = tp->total_inflight;
+        for (;;) {
+            if (already_selected(t1,n_selected,c->u.nonrep.ch_targets))
+                ;
+            else if (tp->total_inflight == 0) {
+                t1 = t2;
+                break;
+            }
+            if (tp->total_inflight < best) {
+                t1 = t2,best = tp->total_inflight;
+            }
+            t2 = (t2 + 1) % derived.n_targets;
+            tp = nonrep_target(t2);
+            if (t2 == t1) break;
+        }
+        c->u.nonrep.ch_targets[n_selected] = t1;
+        inc_target_total_queue(t1);
+    }
+}
+
 void inc_target_total_queue(unsigned target_num)
 {
     target_t *t;

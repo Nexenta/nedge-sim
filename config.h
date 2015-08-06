@@ -36,7 +36,10 @@ typedef struct sim_config {
                                     // variance  is  1/nth the whole duration
                                     // centered on 1.0
     bool do_replicast;              // Test replicast
-    bool do_ch;                     // Test Consistent Hash 
+    bool do_ch;                     // Test Consistent Hash
+    bool omniscient;                // TCP Consistent Hash makes omniscient
+                                    // wise selections - used to measure impact
+                                    // of multicast replication vs. selection
     unsigned seed;                  // seeds random # generators
     unsigned bid_window_multiplier_pct; // multiplier (%) for offered bid window
                                     // width
