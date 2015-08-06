@@ -599,7 +599,7 @@ static void derive_config (void)
         gateway_xmit_time =
             (unsigned)((TICKS_PER_SECOND/1000L)/config.gateway_mbs);
         derived.gateway_xmit_charge =
-            divup(config.chunk_size,1024)*gateway_xmit_time;
+            divup(config.chunk_size,1024)*gateway_xmit_time*config.n_replicas;
     }
 }
 
@@ -630,6 +630,7 @@ static FILE *open_outf (const char *type)
 static void usage (const char *progname) {
     fprintf(stderr,"Usage: %s",progname);
     fprintf(stderr," [rep|ch]");
+    fprintf(stderr," [numrep <#>");
     fprintf(stderr," [duration <msecs>]");
     fprintf(stderr," [ngs <#>]");
     fprintf(stderr," [targets_per <#>]");
@@ -698,6 +699,8 @@ static void customize_config (int argc, const char ** argv)
     for (--argc,++argv;argc >= 1;argv+=2,argc-=2) {
         if (0 == strcmp(*argv,"ngs"))
             config.n_negotiating_groups = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"numrep"))
+            config.n_replicas = atoi(argv[1]);
         else if (0 == strcmp(*argv,"targets_per"))
             config.n_targets_per_ng = atoi(argv[1]);
         else if (0 == strcmp(*argv,"chunk_size"))
