@@ -673,7 +673,7 @@ void report_duration_stats (void)
         mbs = ((float)total_write)/(1024*1024) / config.n_gateways;
         chunks_per_t = (float)track.n_completions *
                         ((float)config.n_replicas)/config.n_gateways;
-        printf("Average gateway sent:%6.2fMB or %4.1f chunks\n",mbs,
+        printf("Average gateway sent:%6.2fMB or %4.1f chunk-replicas\n",mbs,
                chunks_per_t);
         printf("Average gateway throughput %6.2fMB/s\n",mbs*1000/msecs);
     
