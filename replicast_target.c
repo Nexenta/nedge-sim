@@ -398,6 +398,7 @@ protocol_t replicast_sim = {
     .init_target = init_rep_targets,
     .target = rep_target,
     .report_chunk_distribution = report_rep_chunk_distribution,
+    .release_targets = release_rep_targets,
     .h = {
         {handle_rep_chunk_put_ready,log_rep_chunk_put_ready},
         {handle_rep_chunk_put_request_received,
