@@ -33,7 +33,6 @@ void handle_disk_write_completion (const event_t *e)
 //
 {
     disk_write_completion_t *dwc = (disk_write_completion_t *)e;
-    char *tag = replicast ? "replicast" : "non";
     replica_put_ack_t rpa;
     assert(e);
     assert(chunk_seq(dwc->cp));
@@ -47,7 +46,7 @@ void handle_disk_write_completion (const event_t *e)
         if (!config.terse) {
             fprintf(log_f,
                     "%s,DiskWriteCompletion,cp,0x%lx,%d,target,%d,",
-                    tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num);
+                    protocol->tag,rpa.cp,chunk_seq(rpa.cp),dwc->target_num);
             fprintf(log_f,",active_targets,%d\n",track.n_active_targets);
         }
     }
@@ -77,7 +76,7 @@ void omniscient_nonrep_target_select (chunkput_t *c)
     
     for (n_selected=0;n_selected != config.n_replicas;++n_selected) {
         t2 = t1 = rand() % derived.n_targets;
-        tp = nonrep_target(t2);
+        tp = omhtcp_target(t2);
         best = tp->total_inflight;
         for (;;) {
             if (already_selected(t1,n_selected,c->u.nonrep.ch_targets))
@@ -90,7 +89,7 @@ void omniscient_nonrep_target_select (chunkput_t *c)
                 t1 = t2,best = tp->total_inflight;
             }
             t2 = (t2 + 1) % derived.n_targets;
-            tp = nonrep_target(t2);
+            tp = omhtcp_target(t2);
             if (t2 == t1) break;
         }
         c->u.nonrep.ch_targets[n_selected] = t1;
@@ -100,19 +99,18 @@ void omniscient_nonrep_target_select (chunkput_t *c)
 
 void inc_target_total_queue(unsigned target_num)
 {
-    target_t *t;
+    target_t *t = protocol->target(target_num);
     
-    t = replicast ? rep_target(target_num) : nonrep_target(target_num);
-    
+    assert(t);
     ++t->total_inflight;
     if (t->total_inflight == 1) ++track.n_active_targets;
 }
 
 void dec_target_total_queue(unsigned target_num)
 {
-    target_t *t;
+    target_t *t = protocol->target(target_num);
     
-    t = replicast ? rep_target(target_num) : nonrep_target(target_num);
+    assert(t);
     
     --t->total_inflight;
     if (t->total_inflight == 0) --track.n_active_targets;

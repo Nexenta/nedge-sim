@@ -44,7 +44,6 @@ void init_rep_targets(unsigned n_targets)
     
     rept = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
     assert(rept);
-    assert(replicast);
     
     for (n=0;n != n_targets;++n)
         rept[n].ir_head.tllist.next = rept[n].ir_head.tllist.prev =
@@ -91,7 +90,6 @@ static void make_bid (unsigned target_num,
     assert(ack_at);
     assert(ir);
     assert(target_num < derived.n_targets);
-    assert(replicast);
     
     // make initial guess
     *start = s = now + 2*config.cluster_trip_time +
@@ -143,7 +141,7 @@ static void make_bid (unsigned target_num,
     ++total_reservations;
 }
 
-void handle_rep_chunk_put_request_received (const event_t *e)
+static void handle_rep_chunk_put_request_received (const event_t *e)
 
 // Generate a Chunk Put Response with a bid for the chunk put
 // This involves making a bid which is for this target. It must:
@@ -156,7 +154,6 @@ void handle_rep_chunk_put_request_received (const event_t *e)
     rep_chunk_put_response_received_t cpresp;
     
     assert(e);
-    assert(replicast);
     
     cpresp.event.create_time = e->tllist.time;
     cpresp.event.tllist.time = e->tllist.time + config.cluster_trip_time +
@@ -167,6 +164,19 @@ void handle_rep_chunk_put_request_received (const event_t *e)
     make_bid(cpresp.target_num,cpresp.cp,&cpresp.bid_start,&cpresp.bid_lim,
              &cpresp.estimated_ack,&cpresp.qdepth);
     insert_event(cpresp);
+}
+
+static void log_rep_chunk_put_request_received (FILE *f,const event_t *e)
+{
+    const rep_chunk_put_request_received_t *cpreq =
+        (const rep_chunk_put_request_received_t *)e;
+    
+    if (!config.terse) {
+        assert(e);
+        fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d",
+                e->tllist.time,e->create_time,cpreq->cp,chunk_seq(cpreq->cp));
+        fprintf(f,",tgt,%d\n",cpreq->target_num);
+    }
 }
 
 static inbound_reservation_t *ir_find_by_cp (
@@ -225,7 +235,6 @@ static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
     inbound_reservation_t *found_ir;
 #endif
  
-    assert(replicast);
     assert(ir);
     assert(tp);
     assert(tp->ir_queue_depth);
@@ -243,7 +252,7 @@ static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
     --total_reservations;
 }
 
-void handle_rep_chunk_put_accept_received (const event_t *e)
+static void handle_rep_chunk_put_accept_received (const event_t *e)
 //
 // When the Gateway has Accepted a Rendezvous Transfer it tells the entire
 // Negotiating Group the set of accepted targets, and when the rendezvouos
@@ -258,7 +267,6 @@ void handle_rep_chunk_put_accept_received (const event_t *e)
     rep_target_t *tp;
     inbound_reservation_t *ir;
 
-    assert(replicast);
     assert(cpa);
     assert(cpa->target_num < derived.n_targets);
     assert(chunk_seq(cpa->cp));
@@ -277,7 +285,23 @@ void handle_rep_chunk_put_accept_received (const event_t *e)
     }
 }
 
-void handle_rep_rendezvous_xfer_received (const event_t *e)
+static void log_rep_chunk_put_accept_received (FILE *f,const event_t *e)
+{
+    unsigned i;
+    const rep_chunk_put_accept_t *cpa = (const rep_chunk_put_accept_t *)e;
+    
+    if (!config.terse) {
+        fprintf(f, "0x%lx,0x%lx,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,CP,%d,",
+                e->tllist.time,e->create_time,cpa->cp,chunk_seq(cpa->cp),
+                cpa->target_num);
+        fprintf(f,"%ld,%ld,targets,",cpa->window_start,cpa->window_lim);
+        for (i=0;i != config.n_replicas;++i)
+            fprintf (f,",%d",cpa->accepted_target[i]);
+        fprintf(f,"\n");
+    }
+}
+
+static void handle_rep_rendezvous_xfer_received (const event_t *e)
 //
 // When a specific target receives a complete valid Rendevous Transfer
 // it can then enqueue the received chunk to be written to the target drive.
@@ -305,7 +329,6 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
                             - write_variance/2
                             +  (rand() % write_variance);
     
-    assert(replicast);
     assert(e);
     assert(rtr->target_num < derived.n_targets);
     assert(chunk_seq(rtr->cp));
@@ -329,8 +352,20 @@ void handle_rep_rendezvous_xfer_received (const event_t *e)
     insert_event(dws);
 }
 
+static void log_rep_rendezvous_xfer_received (FILE *f,const event_t *e)
+{
+    const rep_rendezvous_xfer_received_t *rtr =
+        (const rep_rendezvous_xfer_received_t *)e;
+    
+    if (!config.terse) {
+        fprintf(f,"0x%lx,0x%lx",e->tllist.time,e->create_time);
+        fprintf(f,",REP_CHUNK_RENDEZVOUS_XFER_RCVD,CP,0x%lx,%d,tgt,%d\n",
+                rtr->cp,chunk_seq(rtr->cp),rtr->target_num);
+    }
+}
+
 #define MAX_TALLY 2048
-void report_rep_chunk_distribution (void)
+void report_rep_chunk_distribution (FILE *f)
 
 // Report distribution of chunks to targets to log_f
 
@@ -350,10 +385,29 @@ void report_rep_chunk_distribution (void)
         ++tally[n];
         if (n > max_n) max_n = n;
     }
-    fprintf(log_f,"Chunks per target distribution:\n");
+    fprintf(f,"Chunks per target distribution:\n");
     for (n = 0;;++n) {
-        fprintf(log_f,"%d --> %d\n",n,tally[n]);
+        fprintf(f,"%d --> %d\n",n,tally[n]);
         if (n == max_n) break;
     }
 }
+
+protocol_t replicast_sim = {
+    .tag = "rep",
+    .name = "Replicast-Multicast",
+    .init_target = init_rep_targets,
+    .target = rep_target,
+    .report_chunk_distribution = report_rep_chunk_distribution,
+    .h = {
+        {handle_rep_chunk_put_ready,log_rep_chunk_put_ready},
+        {handle_rep_chunk_put_request_received,
+            log_rep_chunk_put_request_received},
+        {handle_rep_chunk_put_response_received,
+            log_rep_chunk_put_response_received},
+        {handle_rep_chunk_put_accept_received,
+            log_rep_chunk_put_accept_received},
+        {handle_rep_rendezvous_xfer_received,
+            log_rep_rendezvous_xfer_received}
+    }
+};
 

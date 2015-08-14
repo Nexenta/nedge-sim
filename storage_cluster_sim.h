@@ -40,17 +40,26 @@ typedef struct inbound_reservation {
     bool    accepted;
 } inbound_reservation_t;
 
+#define NUM_PROTOCOL_SPECIFIC_EVENTS 10
 typedef enum event_type {
     NULL_EVENT,
     CHUNK_PUT_READY,
+    TRANSPORT_EVENT_BASE = CHUNK_PUT_READY,
+    // TODO: move these to transport specific .h files
+    REP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
     REP_CHUNK_PUT_REQUEST_RECEIVED,
     REP_CHUNK_PUT_RESPONSE_RECEIVED,
     REP_CHUNK_PUT_ACCEPT_RECEIVED,
     REP_RENDEZVOUS_XFER_RECEIVED,
-    TCP_XMIT_RECEIVED,
-    TCP_RECEPTION_COMPLETE,
-    TCP_RECEPTION_ACK,
-    DISK_WRITE_START,
+    CHTCP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
+    CHTCP_XMIT_RECEIVED,
+    CHTCP_RECEPTION_COMPLETE,
+    CHTCP_RECEPTION_ACK,
+    OMHTCP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
+    OMHTCP_XMIT_RECEIVED,
+    OMHTCP_RECEPTION_COMPLETE,
+    OMHTCP_RECEPTION_ACK,
+    DISK_WRITE_START = TRANSPORT_EVENT_BASE+NUM_PROTOCOL_SPECIFIC_EVENTS,
     DISK_WRITE_COMPLETION,
     REPLICA_PUT_ACK,
     CHUNK_PUT_ACK,
@@ -65,6 +74,31 @@ typedef struct event {
     event_type_t type;
     unsigned sig;   // Must be 0x1234
 } event_t;
+
+typedef struct simulation_event_handlers {
+    void (*handle_func)(const event_t *e);
+    void (*log_func)(FILE *f,const event_t *e);
+} simulation_event_handlers_t;
+
+typedef struct target { // common fields for replicast and non-replicast target
+    unsigned write_qdepth;      // pending writes on this target
+    unsigned total_inflight;    // chunk replicas assigned to this target
+    // but not yet acked to the gateway
+} target_t;
+
+typedef struct protocol {
+    const char *tag;  // short tag for log file entries related to this protocol
+    const char *name; // one line descriptive name of this protocol
+    bool do_me;        // true if this protocol should be perfomed.
+    void (*init_target)(unsigned n_targets);
+        // initialize targets for this protocol
+    void (*report_chunk_distribution)(FILE *f);
+        // report to 'f' on distribution of chunks accumulated forthis protocol
+    void (*release_targets)(void);
+        // release targets allocated by init_target()
+    target_t *(*target)(unsigned tgt);
+    simulation_event_handlers_t h[NUM_PROTOCOL_SPECIFIC_EVENTS];
+} protocol_t;
 
 
 // Tracking data
@@ -303,16 +337,12 @@ extern void tllist_node_verify (const tllist_t *t);
 extern void tllist_verify (const tllist_t *h);
 #endif
 extern tick_t now;
-extern bool replicast;
+
 extern FILE *bid_f;
 extern FILE *log_f;
 
 
-typedef struct target { // common fields for replicast and non-replicast target
-    unsigned write_qdepth;      // pending writes on this target
-    unsigned total_inflight;    // chunk replicas assigned to this target
-                                // but not yet acked to the gateway
-} target_t;
+
 
 // Chunkput Tracking
 //
@@ -378,12 +408,12 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
 } chunkput_t;
 
 // Gateway event handlers - in gateway.c
+extern protocol_t replicast_sim;
+extern protocol_t chtcp_sim;
+extern protocol_t omhtcp_sim;
+extern void handle_replica_put_ack(const event_t *e);
+extern void handle_chunk_put_ack(const event_t *e);
 extern chunkput_t *next_cp (gateway_t *gateway);
-extern void handle_chunk_put_ready (const event_t *e);
-extern void handle_rep_chunk_put_response_received (const event_t *e);
-extern void handle_tcp_reception_ack (const event_t *e);
-extern void handle_replica_put_ack (const event_t *e);
-extern void handle_chunk_put_ack (const event_t *e);
 extern void report_duration_stats (void);
 extern unsigned chunk_seq (chunk_put_handle_t cph); // utility to fetch seq #
 extern gateway_t *chunk_gateway (chunk_put_handle_t cph);
@@ -399,22 +429,47 @@ extern void dec_target_total_queue(unsigned target_num);
 
 // Replicast-specific Target event handlers - in replicast_target.c
 
-extern void handle_rep_chunk_put_request_received (const event_t *e);
-extern void handle_rep_chunk_put_accept_received (const event_t *e);
-extern void handle_rep_rendezvous_xfer_received (const event_t *e);
 extern void init_rep_targets(unsigned n_targets);
-extern void report_rep_chunk_distribution(void);
+extern void report_rep_chunk_distribution(FILE *f);
 extern void release_rep_targets(void);
 extern target_t *rep_target (unsigned target_num);
 
 // Consistent Hash / TCP specific Target event handlers
-extern void handle_tcp_xmit_received (const event_t *e);
-extern void handle_tcp_reception_complete (const event_t *e);
-extern void init_nonrep_targets(unsigned n_targets);
-extern void report_nonrep_chunk_distribution(void);
-extern void release_nonrep_targets(void);
-extern target_t *nonrep_target (unsigned target_num);
+extern void handle_chtcp_xmit_received (const event_t *e);
+extern void log_chtcp_xmit_received (FILE *f,const event_t *e);
+extern void handle_chtcp_reception_complete (const event_t *e);
+extern void log_chtcp_reception_complete(FILE *f,const event_t *e);
+extern void handle_chtcp_reception_ack(const event_t *e);
+extern void log_chtcp_reception_ack(FILE *f,const event_t *e);
+extern void init_chtcp_targets(unsigned n_targets);
+extern void report_chtcp_chunk_distribution(FILE *f);
+extern void release_chtcp_targets(void);
+extern target_t *chtcp_target (unsigned target_num);
+
+extern void handle_omhtcp_xmit_received (const event_t *e);
+extern void log_omhtcp_xmit_received (FILE *f,const event_t *e);
+extern void handle_omhtcp_reception_complete (const event_t *e);
+extern void log_omhtcp_reception_complete(FILE *f,const event_t *e);
+extern void handle_omhtcp_reception_ack(const event_t *e);
+extern void log_omhtcp_reception_ack(FILE *f,const event_t *e);
+extern void init_omhtcp_targets(unsigned n_targets);
+extern void report_omhtcp_chunk_distribution(FILE *f);
+extern void release_omhtcp_targets(void);
+extern target_t *omhtcp_target (unsigned target_num);
+
 extern void omniscient_nonrep_target_select (chunkput_t *c);
+
+extern void handle_chtcp_chunk_put_ready (const event_t *e);
+extern void log_chtcp_chunk_put_ready (FILE *f,const event_t *e);
+extern void handle_omhtcp_chunk_put_ready (const event_t *e);
+extern void log_omhtcp_chunk_put_ready (FILE *f,const event_t *e);
+extern void insert_next_chunk_put_ready (chunkput_t *cp,tick_t insert_time);
+extern void handle_rep_chunk_put_response_received (const event_t *e);
+extern void log_rep_chunk_put_response_received (FILE *f,const event_t *e);
+extern void handle_rep_chunk_put_ready (const event_t *e);
+extern void log_rep_chunk_put_ready (FILE *f,const event_t *e);
+
+extern const protocol_t *protocol;
 #endif
 
 
