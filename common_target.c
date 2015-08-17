@@ -76,7 +76,7 @@ void omniscient_nonrep_target_select (chunkput_t *c)
     
     for (n_selected=0;n_selected != config.n_replicas;++n_selected) {
         t2 = t1 = rand() % derived.n_targets;
-        tp = omhtcp_target(t2);
+        tp = omhtcp_sim.target(t2);
         best = tp->total_inflight;
         for (;;) {
             if (already_selected(t1,n_selected,c->u.nonrep.ch_targets))
@@ -89,7 +89,7 @@ void omniscient_nonrep_target_select (chunkput_t *c)
                 t1 = t2,best = tp->total_inflight;
             }
             t2 = (t2 + 1) % derived.n_targets;
-            tp = omhtcp_target(t2);
+            tp = omhtcp_sim.target(t2);
             if (t2 == t1) break;
         }
         c->u.nonrep.ch_targets[n_selected] = t1;
