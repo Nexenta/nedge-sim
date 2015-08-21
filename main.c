@@ -618,12 +618,24 @@ static void customize_config (int argc, const char ** argv)
             replicast_sim.do_me = true;
             --argv,++argc;
         }
+        else if (0 == strcmp(*argv,repucast_sim.tag)) {
+            repucast_sim.do_me = true;
+             --argv,++argc;
+        }
+        else if (0 == strcmp(*argv,repgroup_sim.tag)) {
+            repgroup_sim.do_me = true;
+            --argv,++argc;
+        }
         else if (0 == strcmp(*argv,chtcp_sim.tag)) {
             chtcp_sim.do_me = true;
             --argv,++argc;
         }
         else if (0 == strcmp(*argv,omhtcp_sim.tag)) {
             omhtcp_sim.do_me = true;
+            --argv,++argc;
+        }
+        else if (0 == strcmp(*argv,omhudp_sim.tag)) {
+            omhudp_sim.do_me = true;
             --argv,++argc;
         }
         else if (0 == strcmp(*argv,"penalty"))
@@ -661,6 +673,14 @@ int main(int argc, const char * argv[]) {
         fprintf(bid_f,"\n");
         fprintf(inflight_f,"\n");
     }
+    if (repucast_sim.do_me) {
+        printf     ("\nSimulating NGH/Unicast ***********************************************\n");
+        fprintf(log_f,"Simulating NGH/Unicast ***********************************************\n");
+        fprintf(bid_f,"Simulating NGH/Unicast ***********************************************\n");
+        
+        simulate(&repucast_sim);
+        free(track.durations);
+    }
     if (chtcp_sim.do_me) {
         printf     ("\nSimulating CH/TCP ***********************************************\n");
         fprintf(log_f,"Simulating CH/TCP ***********************************************\n");
@@ -675,6 +695,14 @@ int main(int argc, const char * argv[]) {
         
         init_seqnum();
         simulate(&omhtcp_sim);
+        free(track.durations);
+    }
+    if (omhudp_sim.do_me) {
+        printf     ("\nSimulating Omniscient Hash/UDP ***********************************************\n");
+        fprintf(log_f,"Simulating Omniscient Has/UDP ***********************************************\n");
+        
+        init_seqnum();
+        simulate(&omhudp_sim);
         free(track.durations);
     }
     fclose(log_f);
