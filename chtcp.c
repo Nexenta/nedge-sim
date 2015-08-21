@@ -8,6 +8,13 @@
 
 #include "storage_cluster_sim.h"
 
+typedef enum chctp_event_type { // extends enum event_type
+    CHTCP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
+    CHTCP_XMIT_RECEIVED,
+    CHTCP_RECEPTION_COMPLETE,
+    CHTCP_RECEPTION_ACK
+} chctp_event_type_t;
+
 typedef struct ongoing_reception {
     // tracks an ongoing TCP reception to a target
     tllist_t    tllist; // time is time tcp reception started
@@ -83,7 +90,7 @@ static void next_tcp_replica_xmit (chunkput_t *cp,tick_t time_now)
         txr.event.create_time = time_now;
         txr.event.tllist.time = time_now + config.cluster_trip_time*3 +
         TCP_CHUNK_SETUP_BYTES*8;
-        txr.event.type = CHTCP_XMIT_RECEIVED;
+        txr.event.type = (event_type_t)CHTCP_XMIT_RECEIVED;
         txr.cp = (chunk_put_handle_t)cp;
         r = cp->u.nonrep.repnum++;
         txr.target_num = cp->u.nonrep.ch_targets[r];
@@ -245,7 +252,7 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     remaining_xfer = derived.chunk_tcp_xmit_duration - ort->credit;
     assert(t->n_ongoing_receptions);
     trc.event.tllist.time = now + remaining_xfer*t->n_ongoing_receptions;
-    trc.event.type = CHTCP_RECEPTION_COMPLETE;
+    trc.event.type = (event_type_t)CHTCP_RECEPTION_COMPLETE;
     trc.cp = cp;
     assert (target_num < derived.n_targets);
     trc.target_num = target_num;
@@ -364,7 +371,7 @@ static void handle_chtcp_reception_complete (const event_t *e)
         }
         tcp_ack.event.create_time = e->tllist.time;
         tcp_ack.event.tllist.time = e->tllist.time + config.cluster_trip_time;
-        tcp_ack.event.type = CHTCP_RECEPTION_ACK;
+        tcp_ack.event.type = (event_type_t)CHTCP_RECEPTION_ACK;
         tcp_ack.cp = ort->cp;
         tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
         insert_event(tcp_ack);

@@ -11,6 +11,14 @@
 
 static unsigned total_reservations = 0;
 
+typedef enum replicast_event_type  { // exends enum event_type
+    REP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
+    REP_CHUNK_PUT_REQUEST_RECEIVED,
+    REP_CHUNK_PUT_RESPONSE_RECEIVED,
+    REP_CHUNK_PUT_ACCEPT_RECEIVED,
+    REP_RENDEZVOUS_XFER_RECEIVED
+} replicast_event_type_t;
+
 typedef struct rep_target_t {       // Track replicast target
     target_t    common;             // common fields
     inbound_reservation_t ir_head;  // tllist of inbound reservations
@@ -253,7 +261,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     
     accept_event.event.create_time = e->tllist.time;
     accept_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
-    accept_event.event.type = REP_CHUNK_PUT_ACCEPT_RECEIVED;
+    accept_event.event.type = (event_type_t)REP_CHUNK_PUT_ACCEPT_RECEIVED;
     accept_event.cp = cprr->cp;
     
     memset(&accept_event.accepted_target[0],0,
@@ -271,7 +279,8 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     assert(accept_event.window_start < accept_event.window_lim);
     assert(accept_event.window_lim > now);
     
-    rendezvous_xfer_event.event.type = REP_RENDEZVOUS_XFER_RECEIVED;
+    rendezvous_xfer_event.event.type =
+        (event_type_t)REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
     
     for_ng(accept_event.target_num,cp->u.replicast.ng)
@@ -327,7 +336,7 @@ static void handle_rep_chunk_put_ready (const event_t *e)
     cprr.event.create_time = e->tllist.time;
     cprr.event.tllist.time   = e->tllist.time +
     config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
-    cprr.event.type = REP_CHUNK_PUT_REQUEST_RECEIVED;
+    cprr.event.type = (event_type_t)REP_CHUNK_PUT_REQUEST_RECEIVED;
     cprr.cp = (chunk_put_handle_t)cp;
     cp->u.replicast.responses_uncollected = config.n_targets_per_ng;
     
@@ -486,7 +495,7 @@ static void handle_rep_chunk_put_request_received (const event_t *e)
     cpresp.event.create_time = e->tllist.time;
     cpresp.event.tllist.time = e->tllist.time + config.cluster_trip_time +
     config.replicast_packet_processing_penalty;
-    cpresp.event.type = REP_CHUNK_PUT_RESPONSE_RECEIVED;
+    cpresp.event.type = (event_type_t)REP_CHUNK_PUT_RESPONSE_RECEIVED;
     cpresp.cp = cpr->cp;
     cpresp.target_num = cpr->target_num;
     make_bid(cpresp.target_num,cpresp.cp,&cpresp.bid_start,&cpresp.bid_lim,
