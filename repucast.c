@@ -29,6 +29,18 @@ typedef enum rg_event_type  { // exends enum event_type
     RG_RENDEZVOUS_XFER_RECEIVED
 } rg_event_type_t;
 
+// Event Flow for Replicast - Unicast
+//
+//   Gateway---PUT_REQUEST--->StorageNode(each in NG)
+//   Gateway<---PUT_RESPONSE--StorageNode(each in NG)
+//   Gateway----ACCEPT------->StorageNode(each in NG)
+//   Gateway----RendezvousTransfer--->StorageNode(1st accepted)
+//   Gateway----RendezvousTransfer--->StorageNode(next accepted)
+//   ...
+//   Gateway<---ReplicaAck------------StorageNode(1st accepted)
+//   ...
+
+
 typedef struct rep_target_t {       // Track replicast target
     target_t    common;             // common fields
     inbound_reservation_t ir_head;  // tllist of inbound reservations
@@ -45,7 +57,7 @@ typedef struct rep_target_t {       // Track replicast target
 // reservations and when the last disk write completion would have occurred.
 //
 
-static rep_target_t *rept = NULL;
+static rep_target_t *repu = NULL;
 
 #define for_ng(target,ng) \
 for ((target) = (ng);\
@@ -249,7 +261,7 @@ static bool target_in_accepted_list (const unsigned *accepted,unsigned target)
     return false;
 }
 
-static void handle_rep_chunk_put_response_received (const event_t *e)
+static void handle_repu_chunk_put_response_received (const event_t *e)
 {
     const rep_chunk_put_response_received_t *cprr =
     (const rep_chunk_put_response_received_t *)e;
@@ -302,6 +314,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
         if (target_in_accepted_list(accept_event.accepted_target,
                                     accept_event.target_num))
         {
+            // TODO schedule these successively
             rendezvous_xfer_event.target_num = accept_event.target_num;
             insert_event(rendezvous_xfer_event);
         }
@@ -310,6 +323,8 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     // schedule the next put request to start slightly before this rendezvous
     // transfer will complete
     //
+    // TODO: schedule this relative to the LAST transfer.
+    //
     next_chunk_time = rendezvous_xfer_event.event.tllist.time;
     next_chunk_time -= 3*config.cluster_trip_time;
     if (next_chunk_time <= now) next_chunk_time = now+1;
@@ -317,24 +332,24 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
         insert_next_chunk_put_ready(new_cp,next_chunk_time);
 }
 
-static void log_rep_chunk_put_response_received (FILE *f,const event_t *e)
+static void log_repu_chunk_put_response_received (FILE *f,const event_t *e)
 {
     const rep_chunk_put_response_received_t *cpresp =
     (rep_chunk_put_response_received_t *)e;
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,",
+        fprintf(f,"0x%lx,0x%lx,REPU_CHUNK_PUT_RESPONSE_RCVD,0x%lx,%d,",
                 e->tllist.time,e->create_time,cpresp->cp,chunk_seq(cpresp->cp));
         fprintf(f,"tgt,%d,bid,0x%lx,0x%lx\n",cpresp->target_num,
                 cpresp->bid_start,cpresp->bid_lim);
     }
 }
 
-#define MINIMUM_UDPV6_BYTES 66
-#define CHUNK_PUT_REQUEST_BYTES (MINIMUM_UDPV6_BYTES+200)
+#define MINIMUM_TCPV6_BYTES 74
+#define CHUNK_PUT_REQUEST_BYTES (MINIMUM_TCPV6_BYTES+200)
 
-static void handle_rep_chunk_put_ready (const event_t *e)
+static void handle_repu_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
     chunkput_t *cp = (chunkput_t *)cpr->cp;
@@ -361,26 +376,26 @@ static void handle_rep_chunk_put_ready (const event_t *e)
     insert_event(cprr);
 }
 
-static void log_rep_chunk_put_ready (FILE *f,const event_t *e)
+static void log_repu_chunk_put_ready (FILE *f,const event_t *e)
 {
     gateway_t *gateway;
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,rep CHUNK_PUT_READY,0x%lx,%d",
+        fprintf(f,"0x%lx,0x%lx,repu CHUNK_PUT_READY,0x%lx,%d",
                 e->tllist.time,e->create_time,cpr->cp,chunk_seq(cpr->cp));
         gateway = chunk_gateway(cpr->cp);
         fprintf(f,",Gateway,%d,chunks,%d\n",gateway->num,gateway->n_chunks);
     }
 }
 
-static target_t *rep_target (unsigned target_num)
+static target_t *repu_target (unsigned target_num)
 {
-    return &rept[target_num].common;
+    return &repu[target_num].common;
 }
 
-static void init_rep_targets(unsigned n_targets)
+static void init_repu_targets(unsigned n_targets)
 //
 // Initialize the target subsystem, specifically the irhead for each
 // entry in the target_t array 't' must be set to empty.
@@ -389,21 +404,19 @@ static void init_rep_targets(unsigned n_targets)
 {
     unsigned n;
     
-    rept = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
-    assert(rept);
+    repu = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
+    assert(repu);
     
     for (n=0;n != n_targets;++n)
-        rept[n].ir_head.tllist.next = rept[n].ir_head.tllist.prev =
-        &rept[n].ir_head.tllist;
+        repu[n].ir_head.tllist.next = repu[n].ir_head.tllist.prev =
+        &repu[n].ir_head.tllist;
 }
 
-static void release_rep_targets (void)
+static void release_repu_targets (void)
 {
-    free(rept);
-    rept = (rep_target_t *)0;
+    free(repu);
+    repu = (rep_target_t *)0;
 }
-
-#define WRITE_QUEUE_THRESH 10
 
 static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
@@ -426,7 +439,7 @@ static void make_bid (unsigned target_num,
     (inbound_reservation_t *)calloc(1,sizeof(inbound_reservation_t));
     inbound_reservation_t *p;
     inbound_reservation_t *insert_after;
-    rep_target_t *tp = rept + target_num;
+    rep_target_t *tp = repu + target_num;
     tick_t s;
     tick_t estimated_write_start;
     
@@ -488,7 +501,7 @@ static void make_bid (unsigned target_num,
     ++total_reservations;
 }
 
-static void handle_rep_chunk_put_request_received (const event_t *e)
+static void handle_repu_chunk_put_request_received (const event_t *e)
 
 // Generate a Chunk Put Response with a bid for the chunk put
 // This involves making a bid which is for this target. It must:
@@ -513,14 +526,14 @@ static void handle_rep_chunk_put_request_received (const event_t *e)
     insert_event(cpresp);
 }
 
-static void log_rep_chunk_put_request_received (FILE *f,const event_t *e)
+static void log_repu_chunk_put_request_received (FILE *f,const event_t *e)
 {
     const rep_chunk_put_request_received_t *cpreq =
     (const rep_chunk_put_request_received_t *)e;
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,REP_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d",
+        fprintf(f,"0x%lx,0x%lx,REPU_CHUNK_PUT_REQUEST_RECEIVED,0x%lx,%d",
                 e->tllist.time,e->create_time,cpreq->cp,chunk_seq(cpreq->cp));
         fprintf(f,",tgt,%d\n",cpreq->target_num);
     }
@@ -576,7 +589,7 @@ static void ir_remove (rep_target_t *tp,inbound_reservation_t *ir)
     --total_reservations;
 }
 
-static void handle_rep_chunk_put_accept_received (const event_t *e)
+static void handle_repu_chunk_put_accept_received (const event_t *e)
 //
 // When the Gateway has Accepted a Rendezvous Transfer it tells the entire
 // Negotiating Group the set of accepted targets, and when the rendezvouos
@@ -594,7 +607,7 @@ static void handle_rep_chunk_put_accept_received (const event_t *e)
     assert(cpa);
     assert(cpa->target_num < derived.n_targets);
     assert(chunk_seq(cpa->cp));
-    tp = rept + cpa->target_num;
+    tp = repu + cpa->target_num;
     ir = ir_find_by_cp (tp,cpa->cp);
     assert(ir);
     
@@ -609,7 +622,7 @@ static void handle_rep_chunk_put_accept_received (const event_t *e)
     }
 }
 
-static void log_rep_chunk_put_accept_received (FILE *f,const event_t *e)
+static void log_repu_chunk_put_accept_received (FILE *f,const event_t *e)
 {
     unsigned i;
     const rep_chunk_put_accept_t *cpa = (const rep_chunk_put_accept_t *)e;
@@ -625,7 +638,7 @@ static void log_rep_chunk_put_accept_received (FILE *f,const event_t *e)
     }
 }
 
-static void handle_rep_rendezvous_xfer_received (const event_t *e)
+static void handle_repu_rendezvous_xfer_received (const event_t *e)
 //
 // When a specific target receives a complete valid Rendevous Transfer
 // it can then enqueue the received chunk to be written to the target drive.
@@ -643,7 +656,7 @@ static void handle_rep_rendezvous_xfer_received (const event_t *e)
 {
     const rep_rendezvous_xfer_received_t *rtr =
     (const rep_rendezvous_xfer_received_t *)e;
-    rep_target_t *tp = rept + rtr->target_num;
+    rep_target_t *tp = repu + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
     tick_t write_start,write_complete;
     disk_write_start_t dws;
@@ -676,20 +689,20 @@ static void handle_rep_rendezvous_xfer_received (const event_t *e)
     insert_event(dws);
 }
 
-static void log_rep_rendezvous_xfer_received (FILE *f,const event_t *e)
+static void log_repu_rendezvous_xfer_received (FILE *f,const event_t *e)
 {
     const rep_rendezvous_xfer_received_t *rtr =
     (const rep_rendezvous_xfer_received_t *)e;
     
     if (!config.terse) {
         fprintf(f,"0x%lx,0x%lx",e->tllist.time,e->create_time);
-        fprintf(f,",REP_CHUNK_RENDEZVOUS_XFER_RCVD,CP,0x%lx,%d,tgt,%d\n",
+        fprintf(f,",REPU_CHUNK_RENDEZVOUS_XFER_RCVD,CP,0x%lx,%d,tgt,%d\n",
                 rtr->cp,chunk_seq(rtr->cp),rtr->target_num);
     }
 }
 
 #define MAX_TALLY 2048
-static void report_rep_chunk_distribution (FILE *f)
+static void report_repu_chunk_distribution (FILE *f)
 
 // Report distribution of chunks to targets to log_f
 
@@ -700,7 +713,7 @@ static void report_rep_chunk_distribution (FILE *f)
     unsigned n,max_n;
     
     memset(tally,0,sizeof tally);
-    for (tp =  rept, tp_lim = rept + derived.n_targets, max_n = 0;
+    for (tp =  repu, tp_lim = repu + derived.n_targets, max_n = 0;
          tp != tp_lim;
          ++tp)
     {
@@ -719,20 +732,20 @@ static void report_rep_chunk_distribution (FILE *f)
 protocol_t repucast_sim = {
     .tag = "repu",
     .name = "Replicast-Unicast",
-    .init_target = init_rep_targets,
-    .target = rep_target,
-    .report_chunk_distribution = report_rep_chunk_distribution,
-    .release_targets = release_rep_targets,
+    .init_target = init_repu_targets,
+    .target = repu_target,
+    .report_chunk_distribution = report_repu_chunk_distribution,
+    .release_targets = release_repu_targets,
     .h = {
-        {handle_rep_chunk_put_ready,log_rep_chunk_put_ready},
-        {handle_rep_chunk_put_request_received,
-            log_rep_chunk_put_request_received},
-        {handle_rep_chunk_put_response_received,
-            log_rep_chunk_put_response_received},
-        {handle_rep_chunk_put_accept_received,
-            log_rep_chunk_put_accept_received},
-        {handle_rep_rendezvous_xfer_received,
-            log_rep_rendezvous_xfer_received}
+        {handle_repu_chunk_put_ready,log_repu_chunk_put_ready},
+        {handle_repu_chunk_put_request_received,
+            log_repu_chunk_put_request_received},
+        {handle_repu_chunk_put_response_received,
+            log_repu_chunk_put_response_received},
+        {handle_repu_chunk_put_accept_received,
+            log_repu_chunk_put_accept_received},
+        {handle_repu_rendezvous_xfer_received,
+            log_repu_rendezvous_xfer_received}
     }
 };
 

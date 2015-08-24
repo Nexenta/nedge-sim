@@ -35,7 +35,7 @@ typedef struct rep_target_t {       // Track replicast target
 // reservations and when the last disk write completion would have occurred.
 //
 
-static rep_target_t *rept = NULL;
+static rep_target_t *repu = NULL;
 
 #define for_ng(target,ng) \
     for ((target) = (ng);\
@@ -367,7 +367,7 @@ static void log_rep_chunk_put_ready (FILE *f,const event_t *e)
 
 static target_t *rep_target (unsigned target_num)
 {
-    return &rept[target_num].common;
+    return &repu[target_num].common;
 }
 
 static void init_rep_targets(unsigned n_targets)
@@ -379,18 +379,18 @@ static void init_rep_targets(unsigned n_targets)
 {
     unsigned n;
     
-    rept = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
-    assert(rept);
+    repu = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
+    assert(repu);
     
     for (n=0;n != n_targets;++n)
-        rept[n].ir_head.tllist.next = rept[n].ir_head.tllist.prev =
-        &rept[n].ir_head.tllist;
+        repu[n].ir_head.tllist.next = repu[n].ir_head.tllist.prev =
+        &repu[n].ir_head.tllist;
 }
 
 static void release_rep_targets (void)
 {
-    free(rept);
-    rept = (rep_target_t *)0;
+    free(repu);
+    repu = (rep_target_t *)0;
 }
 
 #define WRITE_QUEUE_THRESH 10
@@ -416,7 +416,7 @@ static void make_bid (unsigned target_num,
     (inbound_reservation_t *)calloc(1,sizeof(inbound_reservation_t));
     inbound_reservation_t *p;
     inbound_reservation_t *insert_after;
-    rep_target_t *tp = rept + target_num;
+    rep_target_t *tp = repu + target_num;
     tick_t s;
     tick_t estimated_write_start;
     
@@ -494,7 +494,7 @@ static void handle_rep_chunk_put_request_received (const event_t *e)
     
     cpresp.event.create_time = e->tllist.time;
     cpresp.event.tllist.time = e->tllist.time + config.cluster_trip_time +
-    config.replicast_packet_processing_penalty;
+        config.replicast_packet_processing_penalty;
     cpresp.event.type = (event_type_t)REP_CHUNK_PUT_RESPONSE_RECEIVED;
     cpresp.cp = cpr->cp;
     cpresp.target_num = cpr->target_num;
@@ -584,7 +584,7 @@ static void handle_rep_chunk_put_accept_received (const event_t *e)
     assert(cpa);
     assert(cpa->target_num < derived.n_targets);
     assert(chunk_seq(cpa->cp));
-    tp = rept + cpa->target_num;
+    tp = repu + cpa->target_num;
     ir = ir_find_by_cp (tp,cpa->cp);
     assert(ir);
     
@@ -633,7 +633,7 @@ static void handle_rep_rendezvous_xfer_received (const event_t *e)
 {
     const rep_rendezvous_xfer_received_t *rtr =
     (const rep_rendezvous_xfer_received_t *)e;
-    rep_target_t *tp = rept + rtr->target_num;
+    rep_target_t *tp = repu + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
     tick_t write_start,write_complete;
     disk_write_start_t dws;
@@ -690,7 +690,7 @@ static void report_rep_chunk_distribution (FILE *f)
     unsigned n,max_n;
     
     memset(tally,0,sizeof tally);
-    for (tp =  rept, tp_lim = rept + derived.n_targets, max_n = 0;
+    for (tp =  repu, tp_lim = repu + derived.n_targets, max_n = 0;
          tp != tp_lim;
          ++tp)
     {

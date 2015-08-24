@@ -5,14 +5,11 @@
 //  Created by cait on 8/21/15.
 //  Copyright (c) 2015 Nexenta Systems. All rights reserved.
 //
-
-//
-//  replicast.c
-//  StorageClusterSim
-//
-//  Created by Caitlin Bestler on 8/17/15.
-//  Copyright (c) 2015 Nexenta Systems. All rights reserved.
-//
+// Variatin on replicast.c which simulates group consensus.
+// For purposes of this simulation this is done by accelerating the accept
+// message. In a real implementation the accept message is not needed by
+// the storage servers (it is still sent to the gateway from one of the
+// storage servers).
 
 
 #include "storage_cluster_sim.h"
@@ -213,7 +210,6 @@ static void select_replicast_targets (chunk_put_handle_t cp,
     
     b = bids + bids_base;
     
-    // if (0 && m > config.n_replicas) // make it confurable: disregard target qdepths
     if (m > config.n_replicas)
         qsort(b,m,sizeof(bid_t),estimate_compare);
     *window_start = start = b->start;
@@ -268,7 +264,7 @@ static void handle_rg_chunk_put_response_received (const event_t *e)
     if (--cp->u.replicast.responses_uncollected) return;
     
     accept_event.event.create_time = e->tllist.time;
-    accept_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
+    accept_event.event.tllist.time = e->tllist.time + 1;
     accept_event.event.type = (event_type_t)REP_CHUNK_PUT_ACCEPT_RECEIVED;
     accept_event.cp = cprr->cp;
     
@@ -401,8 +397,6 @@ static void release_rg_targets (void)
     rgt = (rep_target_t *)0;
 }
 
-#define WRITE_QUEUE_THRESH 10
-
 static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
                       tick_t *start,
@@ -440,7 +434,7 @@ static void make_bid (unsigned target_num,
     *start = s = now + 2*config.cluster_trip_time +
     config.replicast_packet_processing_penalty;;
     *lim = s +
-    (derived.chunk_udp_xmit_duration*config.bid_window_multiplier_pct)/100;
+        (derived.chunk_udp_xmit_duration*config.bid_window_multiplier_pct)/100;
     assert(*start < *lim);
     
     for (p = (inbound_reservation_t *)tp->ir_head.tllist.next, delayed = false;
@@ -454,8 +448,8 @@ static void make_bid (unsigned target_num,
         // adjust guess to be after inbound_reservation p
         *start = p->lim + 1;
         *lim = *start +
-        (derived.chunk_udp_xmit_duration*config.bid_window_multiplier_pct)
-        / 100;
+            (derived.chunk_udp_xmit_duration*config.bid_window_multiplier_pct)
+            / 100;
         delayed = true;
     }
     assert(*start < *lim);
@@ -478,7 +472,7 @@ static void make_bid (unsigned target_num,
     assert(chunk_seq(cp));
     
     insert_after =
-    (inbound_reservation_t *)tllist_find ((tllist_t *)&tp->ir_head,*start);
+        (inbound_reservation_t *)tllist_find ((tllist_t *)&tp->ir_head,*start);
     tllist_insert ((tllist_t *)insert_after,(tllist_t *)ir);
     assert(qdepth);
     *qdepth = tp->ir_queue_depth++;
@@ -502,7 +496,7 @@ static void handle_rg_chunk_put_request_received (const event_t *e)
     
     cpresp.event.create_time = e->tllist.time;
     cpresp.event.tllist.time = e->tllist.time + config.cluster_trip_time +
-    config.replicast_packet_processing_penalty;
+        config.replicast_packet_processing_penalty;
     cpresp.event.type = (event_type_t)REP_CHUNK_PUT_RESPONSE_RECEIVED;
     cpresp.cp = cpr->cp;
     cpresp.target_num = cpr->target_num;
