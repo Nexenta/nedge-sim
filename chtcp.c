@@ -445,6 +445,7 @@ void report_chtcp_chunk_distribution (FILE *f)
 protocol_t chtcp_sim = {
     .tag = "chtcp",
     .name = "Consistent Hash-TCP",
+    .do_me = false,
     .init_target = init_chtcp_targets,
     .target = chtcp_target,
     .report_chunk_distribution = report_chtcp_chunk_distribution,

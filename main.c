@@ -578,9 +578,22 @@ static void log_config (FILE *f)
     if (config.terse) fprintf(f,"config.terse\n");
 }
 
+static protocol_t *protocol_match (const char *protocol_tag)
+{
+    return (0 == strcmp(protocol_tag,replicast_sim.tag)) ? &replicast_sim
+    : (0 == strcmp(protocol_tag,repucast_sim.tag)) ? & repucast_sim
+    : (0 == strcmp(protocol_tag,repgroup_sim.tag)) ? &repgroup_sim
+    : (0 == strcmp(protocol_tag,chtcp_sim.tag)) ? &chtcp_sim
+    : (0 == strcmp(protocol_tag,omhtcp_sim.tag)) ? &omhtcp_sim
+    : (0 == strcmp(protocol_tag,omhudp_sim.tag)) ? &omhudp_sim
+    : (protocol_t *)0;
+}
+
 static void customize_config (int argc, const char ** argv)
 { // TODO add new fields
     const char *argv0 = argv[0];
+    protocol_t *p;
+    unsigned n_protocols = 0;
     
     if (argc == 2) {
         usage(argv0);
@@ -614,34 +627,15 @@ static void customize_config (int argc, const char ** argv)
         else if (0 == strcmp(*argv,"sample"))
             config.sample_interval =
                 atoi(argv[1])*(TICKS_PER_SECOND/(1000*1000));
-        else if (0 == strcmp(*argv,replicast_sim.tag)) {
-            replicast_sim.do_me = true;
-            --argv,++argc;
-        }
-        else if (0 == strcmp(*argv,repucast_sim.tag)) {
-            repucast_sim.do_me = true;
-             --argv,++argc;
-        }
-        else if (0 == strcmp(*argv,repgroup_sim.tag)) {
-            repgroup_sim.do_me = true;
-            --argv,++argc;
-        }
-        else if (0 == strcmp(*argv,chtcp_sim.tag)) {
-            chtcp_sim.do_me = true;
-            --argv,++argc;
-        }
-        else if (0 == strcmp(*argv,omhtcp_sim.tag)) {
-            omhtcp_sim.do_me = true;
-            --argv,++argc;
-        }
-        else if (0 == strcmp(*argv,omhudp_sim.tag)) {
-            omhudp_sim.do_me = true;
-            --argv,++argc;
-        }
         else if (0 == strcmp(*argv,"penalty"))
             config.replicast_packet_processing_penalty = atoi(argv[1]);
         else if (0 == strcmp(*argv,"terse")) {
             config.terse = true;
+            --argv,++argc;
+        }
+        else if ((p = protocol_match(*argv)) != NULL) {
+            p->do_me = true;
+            ++n_protocols;
             --argv,++argc;
         }
         else {
@@ -650,8 +644,8 @@ static void customize_config (int argc, const char ** argv)
             exit(1);
         }
     }
-    if (!replicast_sim.do_me  &&  !chtcp_sim.do_me  &&  !omhtcp_sim.do_me)
-        replicast_sim.do_me = chtcp_sim.do_me = omhtcp_sim.do_me = true;
+    if (!n_protocols)
+        replicast_sim.do_me = chtcp_sim.do_me = true;
 }
 
 int main(int argc, const char * argv[]) {
@@ -678,7 +672,17 @@ int main(int argc, const char * argv[]) {
         fprintf(log_f,"Simulating NGH/Unicast ***********************************************\n");
         fprintf(bid_f,"Simulating NGH/Unicast ***********************************************\n");
         
+        init_seqnum();
         simulate(&repucast_sim);
+        free(track.durations);
+    }
+    if (repgroup_sim.do_me) {
+        printf     ("\nSimulating NGH/Group ***********************************************\n");
+        fprintf(log_f,"Simulating NGH/Group ***********************************************\n");
+        fprintf(bid_f,"Simulating NGH/Group ***********************************************\n");
+ 
+        init_seqnum();
+        simulate(&repgroup_sim);
         free(track.durations);
     }
     if (chtcp_sim.do_me) {

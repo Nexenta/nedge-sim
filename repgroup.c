@@ -711,6 +711,7 @@ static void report_rg_chunk_distribution (FILE *f)
 protocol_t repgroup_sim = {
     .tag = "rg",
     .name = "Replicast-GroupConsensus",
+    .do_me = false,
     .init_target = init_rg_targets,
     .target = rg_target,
     .report_chunk_distribution = report_rg_chunk_distribution,

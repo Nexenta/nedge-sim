@@ -709,6 +709,7 @@ static void report_rep_chunk_distribution (FILE *f)
 protocol_t replicast_sim = {
     .tag = "rep",
     .name = "Replicast-Multicast",
+    .do_me = false,
     .init_target = init_rep_targets,
     .target = rep_target,
     .report_chunk_distribution = report_rep_chunk_distribution,

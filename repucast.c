@@ -732,6 +732,7 @@ static void report_repu_chunk_distribution (FILE *f)
 protocol_t repucast_sim = {
     .tag = "repu",
     .name = "Replicast-Unicast",
+    .do_me = false,
     .init_target = init_repu_targets,
     .target = repu_target,
     .report_chunk_distribution = report_repu_chunk_distribution,

@@ -418,6 +418,7 @@ void report_omhtcp_chunk_distribution (FILE *f)
 protocol_t omhtcp_sim = {
     .tag = "omhtcp",
     .name = "Omniscient Hash-TCP",
+    .do_me = false,
     .init_target = init_omhtcp_targets,
     .target = omhtcp_target,
     .report_chunk_distribution = report_omhtcp_chunk_distribution,
