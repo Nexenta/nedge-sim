@@ -354,30 +354,12 @@ typedef struct gateway {
     tick_t      last_credited;
 } gateway_t;
 
-//
-// A bid by 'target_num' to store a chunk within the time range 'start'..'lim'
-//
 #define MAX_TARGETS_PER_NG 20
 
-typedef struct chunkput_replicast {
-    // replicast-specific ortion of chunkput_t
-    unsigned ng;     // Chunk has been assigned to this NG
-    bid_t    bids[MAX_TARGETS_PER_NG];
-    // collected bid response
-    // once rendezvous transfer is scheduled it is stored in bids[0].
-    unsigned nbids; // # of bids collected
-    unsigned responses_uncollected; // Chunk Put responses still to be collected
-} chunkput_replicast_t;
-
-typedef struct chunkput_nonreplicast {
-    // non-repicast specfici portion of chunkput_t
-    unsigned ch_targets[MAX_REPLICAS]; // selected targets
-    unsigned repnum;                    // # of replicas previously generated.
-    unsigned acked;
-    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for any target
-} chunkput_nonreplicast_t;
-
 typedef struct chunkput {       // track gateway-specific info about a chunkput
+    unsigned ng;                // Chunk has been assigned to this NG
+                                // field is not used for consistent/omniscient
+                                // hash protocol options.
     unsigned sig;               // must be 0xABCD
     unsigned seqnum;             // sequence # (starting at 1) for all chunks
     // put as part of this simulation
@@ -385,14 +367,15 @@ typedef struct chunkput {       // track gateway-specific info about a chunkput
     tick_t   started;           // When processing of this chunk started
     tick_t   done;              // When processing of this chunk completed
     unsigned replicas_unacked;  // Number of replicas not yet acked
-    int write_qdepth;      // Maximum write queue depth encountered for
-    // this chunk put
-    union chunkput_u {
-        chunkput_replicast_t replicast;
-        chunkput_nonreplicast_t nonrep;
-    } u;
+    int write_qdepth;           // Maximum write queue depth encountered for
+                                // this chunk put
     unsigned mbz;               // must be zero
 } chunkput_t;
+
+typedef struct chunkput_u {
+    chunkput_t cp;
+    unsigned char transport_specific[16];
+} chunkput_u_t;
 
 // Gateway event handlers - in gateway.c
 extern protocol_t replicast_sim;
@@ -416,10 +399,6 @@ extern void handle_disk_write_start (const event_t *e);
 extern void handle_disk_write_completion (const event_t *e);
 extern void inc_target_total_queue(unsigned target_num);
 extern void dec_target_total_queue(unsigned target_num);
-
-
-extern void omniscient_nonrep_target_select (chunkput_t *c);
-
 
 extern void insert_next_chunk_put_ready (chunkput_t *cp,tick_t insert_time);
 

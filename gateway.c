@@ -62,9 +62,9 @@ chunkput_t *next_cp (gateway_t *gateway)
     cp->replicas_unacked = config.n_replicas;
     cp->gateway = gateway;
     assert(cp->replicas_unacked);
-    
-    if (protocol == &replicast_sim)
-        cp->u.replicast.ng = rand() % config.n_negotiating_groups;
+
+    // only relevant for replicast protocols, but harmless otherwise
+    cp->ng = rand() % config.n_negotiating_groups;
     
     return cp;
 }

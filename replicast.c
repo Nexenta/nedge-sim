@@ -11,6 +11,15 @@
 
 static unsigned total_reservations = 0;
 
+typedef struct chunkput_replicast {
+    chunkput_t  cp;
+    bid_t    bids[MAX_TARGETS_PER_NG];
+    // collected bid response
+    // once rendezvous transfer is scheduled it is stored in bids[0].
+    unsigned nbids; // # of bids collected
+    unsigned responses_uncollected; // Chunk Put responses still to be collected
+} chunkput_replicast_t;
+
 typedef enum replicast_event_type  { // exends enum event_type
     REP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
     REP_CHUNK_PUT_REQUEST_RECEIVED,
@@ -180,7 +189,7 @@ static void select_replicast_targets (chunk_put_handle_t cp,
 {
     unsigned n,m;
     tick_t  start,lim;
-    const chunkput_t *c = (const chunkput_t *)cp;
+    const chunkput_replicast_t *c = (const chunkput_replicast_t *)cp;
     unsigned max_qdepth;
     unsigned bids_base;
     bid_t *b;
@@ -191,7 +200,7 @@ static void select_replicast_targets (chunk_put_handle_t cp,
     if (!config.terse) {
         for (n = 0; n != nbids; ++n) {
             fprintf(bid_f,"BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Tgt,%d",
-                    c->seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
+                    c->cp.seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
                     bids[n].target_num);
             fprintf(bid_f,",EstAck,%ld\n",bids[n].estimated_ack);
         }
@@ -214,7 +223,7 @@ static void select_replicast_targets (chunk_put_handle_t cp,
     assert (lim > start);
     
     fprintf(bid_f,"BIDS:CP #,%d,Now,%ld,Accepted,%ld,%ld,TARGET",
-            c->seqnum,now,start,lim);
+            c->cp.seqnum,now,start,lim);
     for (m = 0,max_qdepth = 0; m != config.n_replicas; ++m) {
         if (b[m].queue_depth > max_qdepth)
             max_qdepth = b[m].queue_depth;
@@ -245,19 +254,19 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     (const rep_chunk_put_response_received_t *)e;
     rep_chunk_put_accept_t accept_event;
     rep_rendezvous_xfer_received_t rendezvous_xfer_event;
-    chunkput_t *cp = (chunkput_t *)cprr->cp;
+    chunkput_replicast_t *cp = (chunkput_replicast_t *)cprr->cp;
     chunkput_t *new_cp;
     tick_t next_chunk_time;
     
     assert(cp);
-    assert(!cp->mbz);
-    assert(cp->sig == 0xABCD);
-    assert(cp->seqnum);
-    assert(0 < cp->u.replicast.responses_uncollected);
-    assert(cp->u.replicast.responses_uncollected <= config.n_targets_per_ng);
+    assert(!cp->cp.mbz);
+    assert(cp->cp.sig == 0xABCD);
+    assert(cp->cp.seqnum);
+    assert(0 < cp->responses_uncollected);
+    assert(cp->responses_uncollected <= config.n_targets_per_ng);
     
-    save_bid (cp->u.replicast.bids,&cp->u.replicast.nbids,cprr);
-    if (--cp->u.replicast.responses_uncollected) return;
+    save_bid (cp->bids,&cp->nbids,cprr);
+    if (--cp->responses_uncollected) return;
     
     accept_event.event.create_time = e->tllist.time;
     accept_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
@@ -267,8 +276,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     memset(&accept_event.accepted_target[0],0,
            sizeof accept_event.accepted_target);
     
-    select_replicast_targets (cprr->cp,cp->u.replicast.nbids,
-                              cp->u.replicast.bids,
+    select_replicast_targets (cprr->cp,cp->nbids,cp->bids,
                               accept_event.accepted_target,
                               &accept_event.window_start,
                               &accept_event.window_lim);
@@ -283,7 +291,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
         (event_type_t)REP_RENDEZVOUS_XFER_RECEIVED;
     rendezvous_xfer_event.cp = accept_event.cp;
     
-    for_ng(accept_event.target_num,cp->u.replicast.ng)
+    for_ng(accept_event.target_num,cp->cp.ng)
     {
         /* Insert the ACCEPT message for all members of the Negotiating Group
          * Insert the Rendezvous Transfer for the accepted members
@@ -303,7 +311,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     next_chunk_time = rendezvous_xfer_event.event.tllist.time;
     next_chunk_time -= 3*config.cluster_trip_time;
     if (next_chunk_time <= now) next_chunk_time = now+1;
-    if ((new_cp = next_cp(cp->gateway)) != NULL)
+    if ((new_cp = next_cp(cp->cp.gateway)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_chunk_time);
 }
 
@@ -327,18 +335,18 @@ static void log_rep_chunk_put_response_received (FILE *f,const event_t *e)
 static void handle_rep_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
-    chunkput_t *cp = (chunkput_t *)cpr->cp;
+    chunkput_replicast_t *cp = (chunkput_replicast_t *)cpr->cp;
     rep_chunk_put_request_received_t cprr;
     
     assert (cp);
-    assert(!cp->mbz);
+    assert(!cp->cp.mbz);
     
     cprr.event.create_time = e->tllist.time;
     cprr.event.tllist.time   = e->tllist.time +
-    config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
+        config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
     cprr.event.type = (event_type_t)REP_CHUNK_PUT_REQUEST_RECEIVED;
     cprr.cp = (chunk_put_handle_t)cp;
-    cp->u.replicast.responses_uncollected = config.n_targets_per_ng;
+    cp->responses_uncollected = config.n_targets_per_ng;
     
     /* for each Target in randomly selected negotiating group.
      * the Targets are assigned round-robin to Negotiating Groups.
@@ -346,9 +354,9 @@ static void handle_rep_chunk_put_ready (const event_t *e)
      * Actual Negotiating Groups are selected based on cryptographic hash
      * of the payload (for payload chunks) or the object name (for metadata)
      */
-    cp->u.replicast.ng = rand() % config.n_negotiating_groups;
-    for_ng(cprr.target_num,cp->u.replicast.ng)
-    insert_event(cprr);
+    cp->cp.ng = rand() % config.n_negotiating_groups;
+    for_ng(cprr.target_num,cp->cp.ng)
+        insert_event(cprr);
 }
 
 static void log_rep_chunk_put_ready (FILE *f,const event_t *e)

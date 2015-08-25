@@ -8,6 +8,15 @@
 
 #include "storage_cluster_sim.h"
 
+
+typedef struct chunkput_chtcp {
+    chunkput_t  cp;
+    unsigned ch_targets[MAX_REPLICAS]; // selected targets
+    unsigned repnum;                    // # of replicas previously generated.
+    unsigned acked;
+    unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for any target
+} chunkput_chtcp_t;
+
 typedef enum chctp_event_type { // extends enum event_type
     CHTCP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
     CHTCP_XMIT_RECEIVED,
@@ -18,8 +27,8 @@ typedef enum chctp_event_type { // extends enum event_type
 typedef struct ongoing_reception {
     // tracks an ongoing TCP reception to a target
     tllist_t    tllist; // time is time tcp reception started
-    tick_t  credit;    // how many bits have been simulated
-    tick_t  credited_thru;  // thru when?
+    tick_t      credit;    // how many bits have been simulated
+    tick_t      credited_thru;  // thru when?
     chunk_put_handle_t cp;  // for which chunk?
     unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for target
     // over lifespan of this reception.
@@ -31,7 +40,7 @@ typedef struct chtcp_target_t {
     unsigned n_ongoing_receptions;  // # of ongoing TCP receptions
     ongoing_reception_t orhead;     // tllist head of ongoing TCP receptions
     tick_t last_disk_write_completion;  // last disk write completion for
-    // this target
+                                        // this target
     unsigned chunks_put;
     unsigned mbz;   // debugging paranoia
 } chtcp_target_t;
@@ -43,7 +52,7 @@ typedef struct chtcp_target_t {
 
 static chtcp_target_t *chtcp_tgt = NULL;
 
-static void select_chtcp_targets (chunkput_t *c)
+static void select_chtcp_targets (chunkput_chtcp_t *c)
 
 // select config.n_replicas different targets
 // store them in c->u.nonrep.ch_targets[0..n_repicas-1]
@@ -56,16 +65,16 @@ static void select_chtcp_targets (chunkput_t *c)
     
     assert (config.n_replicas < derived.n_targets);
     
-    fprintf(log_f,"@0x%lx,CP,0x%p,%d,targets selected",now,c,c->seqnum);
+    fprintf(log_f,"@0x%lx,CP,0x%p,%d,targets selected",now,c,c->cp.seqnum);
     for (n = 0; n != config.n_replicas;++n) {
         t = rand() % derived.n_targets;
         for (i = 0; i < n; ++i) {
-            while (c->u.nonrep.ch_targets[i] == t) {
+            while (c->ch_targets[i] == t) {
                 t = (t + 1) % derived.n_targets;
                 i = 0;
             }
         }
-        c->u.nonrep.ch_targets[n] = t;
+        c->ch_targets[n] = t;
         inc_target_total_queue(t);
         fprintf(log_f,",%d",t);
     }
@@ -77,7 +86,7 @@ static void select_chtcp_targets (chunkput_t *c)
 // 3 packets for TCP connectino setup plus minimal pre-transfer data
 // The cluster_trip_time must still be added to this.
 
-static void next_tcp_replica_xmit (chunkput_t *cp,tick_t time_now)
+static void next_tcp_replica_xmit (chunkput_chtcp_t *cp,tick_t time_now)
 
 // Schedule the next TCP transmit start after the previous tcp transmit for
 // the same object has completed
@@ -86,14 +95,14 @@ static void next_tcp_replica_xmit (chunkput_t *cp,tick_t time_now)
     tcp_xmit_received_t txr;
     unsigned r;
     
-    if (cp->replicas_unacked) {
+    if (cp->cp.replicas_unacked) {
         txr.event.create_time = time_now;
         txr.event.tllist.time = time_now + config.cluster_trip_time*3 +
         TCP_CHUNK_SETUP_BYTES*8;
         txr.event.type = (event_type_t)CHTCP_XMIT_RECEIVED;
         txr.cp = (chunk_put_handle_t)cp;
-        r = cp->u.nonrep.repnum++;
-        txr.target_num = cp->u.nonrep.ch_targets[r];
+        r = cp->repnum++;
+        txr.target_num = cp->ch_targets[r];
         insert_event(txr);
     }
 }
@@ -101,10 +110,10 @@ static void next_tcp_replica_xmit (chunkput_t *cp,tick_t time_now)
 static void handle_chtcp_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
-    chunkput_t *cp = (chunkput_t *)cpr->cp;
+    chunkput_chtcp_t *cp = (chunkput_chtcp_t *)cpr->cp;
     
     assert (cp);
-    assert(!cp->mbz);
+    assert(!cp->cp.mbz);
     
     select_chtcp_targets(cp);
     next_tcp_replica_xmit(cp,e->tllist.time);
@@ -115,7 +124,7 @@ static void log_chtcp_chunk_put_ready (FILE *f,const event_t *e)
     fprintf(f,"chtcp,CHUNK_PUT_READY\n");
 }
 
-static void remove_tcp_reception_target (chunkput_t *cp,unsigned target_num)
+static void remove_tcp_reception_target (chunkput_chtcp_t *cp,unsigned target_num)
 
 // this is a sanity checking diagnostic.
 // It does notcontribute to the final results.
@@ -123,8 +132,8 @@ static void remove_tcp_reception_target (chunkput_t *cp,unsigned target_num)
 {
     unsigned  *p;
     
-    for (p = cp->u.nonrep.ch_targets;
-         p != cp->u.nonrep.ch_targets+config.n_replicas;
+    for (p = cp->ch_targets;
+         p != cp->ch_targets+config.n_replicas;
          ++p)
     {
         if (*p == target_num) {
@@ -142,20 +151,20 @@ static void handle_chtcp_reception_ack (const event_t *e)
 
 {
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
-    chunkput_t *cp = (chunkput_t *)tra->cp;
+    chunkput_chtcp_t *cp = (chunkput_chtcp_t *)tra->cp;
     chunkput_t *new_cp;
     tick_t next_tcp_time;
     
     remove_tcp_reception_target(cp,tra->target_num);
     
-    if (tra->max_ongoing_rx > cp->u.nonrep.max_ongoing_rx)
-        cp->u.nonrep.max_ongoing_rx  = tra->max_ongoing_rx;
+    if (tra->max_ongoing_rx > cp->max_ongoing_rx)
+        cp->max_ongoing_rx  = tra->max_ongoing_rx;
     next_tcp_time = e->tllist.time;
     next_tcp_time -= 3*config.cluster_trip_time;
     if (next_tcp_time <= now) next_tcp_time = now+1;
-    if (++cp->u.nonrep.acked < config.n_replicas)
+    if (++cp->acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
-    else if ((new_cp = next_cp(cp->gateway)) != NULL)
+    else if ((new_cp = next_cp(cp->cp.gateway)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_tcp_time);
 }
 

@@ -590,7 +590,7 @@ static protocol_t *protocol_match (const char *protocol_tag)
 }
 
 static void customize_config (int argc, const char ** argv)
-{ // TODO add new fields
+{
     const char *argv0 = argv[0];
     protocol_t *p;
     unsigned n_protocols = 0;
@@ -648,6 +648,22 @@ static void customize_config (int argc, const char ** argv)
         replicast_sim.do_me = chtcp_sim.do_me = true;
 }
 
+static void sim_protocol (const protocol_t *p)
+{
+    if (p->do_me) {
+        printf     ("\nSimulating %s ******************************\n",p->name);
+        fprintf(log_f,"Simulating %s ******************************\n",p->name);
+        fprintf(bid_f,"Simulating %s ******************************\n",p->name);
+        
+        init_seqnum();
+        simulate(p);
+        free(track.durations);
+        fprintf(log_f,"\n");
+        fprintf(bid_f,"\n");
+        fprintf(inflight_f,"\n");
+    }
+}
+
 int main(int argc, const char * argv[]) {
     customize_config(argc,argv);
     derive_config();
@@ -656,59 +672,14 @@ int main(int argc, const char * argv[]) {
     inflight_f = open_outf("inflight");
     
     log_config(log_f);
-    if (replicast_sim.do_me) {
-        printf     ("\nSimulating NGH/Replicast ***********************************************\n");
-        fprintf(log_f,"Simulating NGH/Replicast ***********************************************\n");
-        fprintf(bid_f,"Simulating NGH/Replicast ***********************************************\n");
+    
+    sim_protocol(&replicast_sim);
+    sim_protocol(&repucast_sim);
+    sim_protocol(&repgroup_sim);
+    sim_protocol(&chtcp_sim);
+    sim_protocol(&omhtcp_sim);
+    sim_protocol(&omhudp_sim);
 
-        simulate(&replicast_sim);
-        free(track.durations);
-        fprintf(log_f,"\n");
-        fprintf(bid_f,"\n");
-        fprintf(inflight_f,"\n");
-    }
-    if (repucast_sim.do_me) {
-        printf     ("\nSimulating NGH/Unicast ***********************************************\n");
-        fprintf(log_f,"Simulating NGH/Unicast ***********************************************\n");
-        fprintf(bid_f,"Simulating NGH/Unicast ***********************************************\n");
-        
-        init_seqnum();
-        simulate(&repucast_sim);
-        free(track.durations);
-    }
-    if (repgroup_sim.do_me) {
-        printf     ("\nSimulating NGH/Group ***********************************************\n");
-        fprintf(log_f,"Simulating NGH/Group ***********************************************\n");
-        fprintf(bid_f,"Simulating NGH/Group ***********************************************\n");
- 
-        init_seqnum();
-        simulate(&repgroup_sim);
-        free(track.durations);
-    }
-    if (chtcp_sim.do_me) {
-        printf     ("\nSimulating CH/TCP ***********************************************\n");
-        fprintf(log_f,"Simulating CH/TCP ***********************************************\n");
-
-        init_seqnum();
-        simulate(&chtcp_sim);
-        free(track.durations);
-    }
-    if (omhtcp_sim.do_me) {
-        printf     ("\nSimulating Omniscient Hash/TCP ***********************************************\n");
-        fprintf(log_f,"Simulating Omniscient Has/TCP ***********************************************\n");
-        
-        init_seqnum();
-        simulate(&omhtcp_sim);
-        free(track.durations);
-    }
-    if (omhudp_sim.do_me) {
-        printf     ("\nSimulating Omniscient Hash/UDP ***********************************************\n");
-        fprintf(log_f,"Simulating Omniscient Has/UDP ***********************************************\n");
-        
-        init_seqnum();
-        simulate(&omhudp_sim);
-        free(track.durations);
-    }
     fclose(log_f);
     fclose(bid_f);
     fclose(inflight_f);
