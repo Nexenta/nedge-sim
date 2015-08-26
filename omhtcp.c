@@ -78,9 +78,41 @@ static void next_tcp_replica_xmit (chunkput_omhtcp_t *cp,tick_t time_now)
     }
 }
 
-static void omniscient_target_select(chunkput_t *cp)
+static bool already_in_list (unsigned tgt,unsigned *list,unsigned n)
 {
-    // TODO
+    for (;n;--n,++list) {
+        if (*list == tgt)
+            return true;
+    }
+    return false;
+}
+
+static void omniscient_target_select(chunkput_omhtcp_t *cp)
+{
+    unsigned tgt, wrap_tgt;
+    unsigned *next_select = cp->ch_targets;
+    unsigned *select_lim = next_select + config.n_replicas;
+    omhtcp_target_t *tp;
+    unsigned thresh = 0;
+    unsigned n_selected = 0;
+    
+    for (tgt = wrap_tgt = rand() % derived.n_targets;;) {
+        if (!already_in_list(tgt,cp->ch_targets,n_selected)) {
+            tp = omhtcp_tgt + tgt;
+            if (tp->common.total_inflight <= thresh) {
+                ++n_selected;
+                *next_select++ = tgt;
+                inc_target_total_queue(tgt);
+                if (next_select == select_lim)
+                    break;
+            }
+        }
+        if (++tgt == derived.n_targets)
+            tgt = 0;
+        if (tgt == wrap_tgt)
+            ++thresh;
+    }
+    return;
 }
 
 static void handle_omhtcp_chunk_put_ready (const event_t *e)
@@ -91,7 +123,7 @@ static void handle_omhtcp_chunk_put_ready (const event_t *e)
     assert (cp);
     assert(!cp->cp.mbz);
     
-    omniscient_target_select(&cp->cp);
+    omniscient_target_select(cp);
     next_tcp_replica_xmit(cp,e->tllist.time);
 }
 
