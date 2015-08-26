@@ -229,6 +229,8 @@ static void select_targets (const chunkput_omhudp_t *c,
     unsigned max_qdepth;
     unsigned bids_base;
     bid_t *b;
+    omhudp_target_t *tp;
+    tick_t estimated_write_start;
     
     assert (nbids <= config.n_targets_per_ng);
     
@@ -265,6 +267,18 @@ static void select_targets (const chunkput_omhudp_t *c,
         accepted_target[m] = b[m].target_num;
         fprintf(bid_f,",%d",accepted_target[m]);
         inc_target_total_queue(b[m].target_num);
+        
+        estimated_write_start = b[m].lim;
+        tp = omhudp_tgt + accepted_target[m];
+        
+        if (tp->last_disk_write_completion > estimated_write_start)
+            estimated_write_start = tp->last_disk_write_completion;
+        //
+        // This is an *estimated* ack, we don't know the variation yet
+        //
+        b[m].estimated_ack = estimated_write_start +
+                            config.cluster_trip_time +
+                            derived.chunk_disk_write_duration;
     }
     fprintf(bid_f,",index,%d,MaxQ,%d\n",m,max_qdepth);
     return;
