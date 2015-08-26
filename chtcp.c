@@ -359,8 +359,8 @@ static void handle_chtcp_reception_complete (const event_t *e)
     tick_t write_variance =
     derived.chunk_disk_write_duration/config.write_variance;
     tick_t write_duration = derived.chunk_disk_write_duration
-    - write_variance/2
-    +  (rand() % write_variance);
+                        - write_variance/2
+                        +  (rand() % write_variance);
     
     assert (e); (void)e;
     
