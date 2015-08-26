@@ -164,7 +164,8 @@ static void handle_chtcp_reception_ack (const event_t *e)
     if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
-    else if ((new_cp = next_cp(cp->cp.gateway)) != NULL)
+    else if ((new_cp = next_cp(cp->cp.gateway,sizeof(chunkput_chtcp_t)))
+             != NULL)
         insert_next_chunk_put_ready(new_cp,next_tcp_time);
 }
 
@@ -454,6 +455,7 @@ void report_chtcp_chunk_distribution (FILE *f)
 protocol_t chtcp_sim = {
     .tag = "chtcp",
     .name = "Consistent Hash-TCP",
+    .cp_size = sizeof(chunkput_chtcp_t),
     .do_me = false,
     .init_target = init_chtcp_targets,
     .target = chtcp_target,

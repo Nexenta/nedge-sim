@@ -487,7 +487,7 @@ static void handle_repu_xmit_ack (const event_t *e)
     if (next_time <= now) next_time = now+1;
     if (++cp->acked < config.n_replicas)
         next_replica_xmit(cp,next_time);
-    else if ((new_cp = next_cp(cp->cp.gateway)) != NULL)
+    else if ((new_cp = next_cp(cp->cp.gateway,repucast_sim.cp_size)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_time);
 }
 
@@ -527,6 +527,7 @@ static void report_repu_chunk_distribution (FILE *f)
 protocol_t repucast_sim = {
     .tag = "repu",
     .name = "Replicast-Unicast",
+    .cp_size = sizeof(chunkput_repu_t),
     .do_me = false,
     .init_target = init_repu_targets,
     .target = repu_target,

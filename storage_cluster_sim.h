@@ -76,6 +76,7 @@ typedef struct target { // common fields for replicast and non-replicast target
 typedef struct protocol {
     const char *tag;  // short tag for log file entries related to this protocol
     const char *name; // one line descriptive name of this protocol
+    size_t  cp_size;    // size ofthe chunkput struct used by this protocol
     bool do_me;        // true if this protocol should be perfomed.
     void (*init_target)(unsigned n_targets);
         // initialize targets for this protocol
@@ -386,7 +387,7 @@ extern protocol_t omhtcp_sim;
 extern protocol_t omhudp_sim;
 extern void handle_replica_put_ack(const event_t *e);
 extern void handle_chunk_put_ack(const event_t *e);
-extern chunkput_t *next_cp (gateway_t *gateway);
+extern chunkput_t *next_cp (gateway_t *gateway,size_t size);
 extern void report_duration_stats (void);
 extern unsigned chunk_seq (chunk_put_handle_t cph); // utility to fetch seq #
 extern gateway_t *chunk_gateway (chunk_put_handle_t cph);

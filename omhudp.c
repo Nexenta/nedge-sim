@@ -96,7 +96,7 @@ static void make_bid (unsigned target_num,bid_t *bid)
     
     // make initial guess
     bid->start = s = now + 2*config.cluster_trip_time +
-    config.replicast_packet_processing_penalty;;
+                 config.replicast_packet_processing_penalty;;
     bid->lim = s + derived.chunk_udp_xmit_duration;
     assert(bid->start < bid->lim);
     
@@ -431,6 +431,8 @@ void handle_omhudp_rendezvous_xfer_received (const event_t *e)
         (const omhudp_rendezvous_xfer_received_t *)e;
     omhudp_target_t *tp = omhudp_tgt + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
+    chunkput_omhudp_t *cp = (chunkput_omhudp_t *)rtr->cp;
+    chunkput_t *new_cp;
     tick_t write_start,write_complete;
     disk_write_start_t dws;
     tick_t write_variance =
@@ -460,6 +462,11 @@ void handle_omhudp_rendezvous_xfer_received (const event_t *e)
     dws.target_num = rtr->target_num;
     
     insert_event(dws);
+    //
+    // schedule the next put request to start
+    //
+    if ((new_cp = next_cp(cp->cp.gateway,omhudp_sim.cp_size)) != NULL)
+        insert_next_chunk_put_ready(new_cp,now+1);
 }
 
 void log_omhudp_rendezvous_xfer_received (FILE *f,const event_t *e)
@@ -507,6 +514,7 @@ void report_omhudp_chunk_distribution (FILE *f)
 protocol_t omhudp_sim = {
     .tag = "omhudp",
     .name = "Omniscient Hash-UDP",
+    .cp_size = sizeof(chunkput_omhudp_t),
     .init_target = init_omhudp_targets,
     .target = omhudp_target,
     .report_chunk_distribution = report_omhudp_chunk_distribution,

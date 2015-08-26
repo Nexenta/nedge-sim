@@ -311,7 +311,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     next_chunk_time = rendezvous_xfer_event.event.tllist.time;
     next_chunk_time -= 3*config.cluster_trip_time;
     if (next_chunk_time <= now) next_chunk_time = now+1;
-    if ((new_cp = next_cp(cp->cp.gateway)) != NULL)
+    if ((new_cp = next_cp(cp->cp.gateway,replicast_sim.cp_size)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_chunk_time);
 }
 
@@ -715,6 +715,7 @@ static void report_rep_chunk_distribution (FILE *f)
 protocol_t replicast_sim = {
     .tag = "rep",
     .name = "Replicast-Multicast",
+    .cp_size = sizeof(chunkput_replicast_t),
     .do_me = false,
     .init_target = init_rep_targets,
     .target = rep_target,
