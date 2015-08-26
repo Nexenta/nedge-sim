@@ -36,6 +36,18 @@ typedef struct omhudp_target_t {
     unsigned mbz;   // debugging paranoia
 } omhudp_target_t;
 
+typedef struct omhudp_rendezvous_xfer_received {
+    event_t event;          // rep_rendezvous_transfer_receieved is an event
+    chunk_put_handle_t  cp; // Handle of the chunk put
+    unsigned target_num;    // The target that received this rendezvous transfer
+} omhudp_rendezvous_xfer_received_t;
+//
+// The Rendezvous Transfer is received by each selected target for a specific
+// chunk put. it occurs when the full chunk transfer would be compelte.
+//
+// It is scheduled at the same time as the chunk_put_accept for the subset
+// of the negotiating group which was accepted.
+//
 
 static omhudp_target_t *omhudp_tgt = NULL;
 
@@ -237,7 +249,6 @@ static void select_targets (const chunkput_omhudp_t *c,
     
     b = bids + bids_base;
     
-    // if (0 && m > config.n_replicas) // make it confurable: disregard target qdepths
     if (m > config.n_replicas)
         qsort(b,m,sizeof(bid_t),estimate_compare);
     *window_start = start = b->start;
@@ -258,7 +269,10 @@ static void select_targets (const chunkput_omhudp_t *c,
     return;
 }
 
-static void omniscient_target_select(chunkput_omhudp_t *cp)
+static void omniscient_target_select(chunkput_omhudp_t *cp,
+                                     unsigned *accepted_target,
+                                     tick_t *start,
+                                     tick_t *lim)
 //
 // just using targete data:
 //      for each member of the ng
@@ -271,26 +285,30 @@ static void omniscient_target_select(chunkput_omhudp_t *cp)
     unsigned target;
     unsigned n = 0;
     bid_t bid[MAX_TARGETS_PER_NG];
-    unsigned accepted_target[MAX_REPLICAS];
-    tick_t start,lim;
     inbound_reservation_t *ir;
     omhudp_target_t *tp;
     inbound_reservation_t *insert_after;
     
+    assert (cp);
+    assert (accepted_target);
+    assert (start);
+    assert (lim);
+    
     for_ng(target,cp->cp.ng) {
         make_bid(target,bid+n);
+        bid[n].target_num = target;
         ++n;
     }
-    select_targets(cp,config.n_targets_per_ng,bid,accepted_target,&start,&lim);
+    select_targets(cp,config.n_targets_per_ng,bid,accepted_target,start,lim);
     for (n = 0; n != config.n_replicas; ++n) {
         ir = (inbound_reservation_t *)calloc(1,sizeof(inbound_reservation_t));
         ir->accepted = true;
         ir->cp = (chunk_put_handle_t)cp;
-        ir->tllist.time = start;
-        ir->lim = lim;
+        ir->tllist.time = *start;
+        ir->lim = *lim;
         tp = omhudp_tgt + accepted_target[n];
         insert_after = (inbound_reservation_t *)
-            tllist_find((tllist_t *)&tp->ir_head,start);
+            tllist_find((tllist_t *)&tp->ir_head,*start);
         tllist_insert ((tllist_t *)insert_after,(tllist_t *)ir);
         ++tp->ir_queue_depth;
         assert(tp->ir_queue_depth < 999);
@@ -306,12 +324,23 @@ static void handle_omhudp_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
     chunkput_omhudp_t *cp = (chunkput_omhudp_t *)cpr->cp;
+    omhudp_rendezvous_xfer_received_t xfer_event;
+    unsigned accepted_target[MAX_REPLICAS];
+    tick_t start,lim;
+    unsigned n;
     
     assert (cp);
     assert(!cp->cp.mbz);
     
-    omniscient_target_select(cp);
-    // schedule OMHDUP_RENDEZVOUS_XFER event on selected targets.
+    omniscient_target_select(cp,accepted_target,&start,&lim);
+    xfer_event.event.create_time = now+1;
+    xfer_event.event.tllist.time = lim;
+    xfer_event.event.type = (event_type_t)OMHUDP_RENDEZVOUS_XFER_RECEIVED;
+    xfer_event.cp = (chunk_put_handle_t)cp;
+    for (n = 0; n != config.n_replicas; ++n) {
+        xfer_event.target_num = accepted_target[n];
+        insert_event(xfer_event);
+    }
 }
 
 static void log_omhudp_chunk_put_ready (FILE *f,const event_t *e)
@@ -398,8 +427,8 @@ void handle_omhudp_rendezvous_xfer_received (const event_t *e)
 //
 
 {
-    const rep_rendezvous_xfer_received_t *rtr =
-        (const rep_rendezvous_xfer_received_t *)e;
+    const omhudp_rendezvous_xfer_received_t *rtr =
+        (const omhudp_rendezvous_xfer_received_t *)e;
     omhudp_target_t *tp = omhudp_tgt + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
     tick_t write_start,write_complete;
