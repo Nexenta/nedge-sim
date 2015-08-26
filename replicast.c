@@ -401,8 +401,6 @@ static void release_rep_targets (void)
     repu = (rep_target_t *)0;
 }
 
-#define WRITE_QUEUE_THRESH 10
-
 static void make_bid (unsigned target_num,
                       chunk_put_handle_t cp,
                       tick_t *start,
