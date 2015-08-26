@@ -498,7 +498,7 @@ static void make_bid (unsigned target_num,
     // This is an *estimated* ack, we don't know the variation yet
     //
     *ack_at = estimated_write_start + config.cluster_trip_time +
-    derived.chunk_disk_write_duration;
+        derived.chunk_disk_write_duration;
     
     ir->tllist.time = *start;
     ir->lim = *lim;
