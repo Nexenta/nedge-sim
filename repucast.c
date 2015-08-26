@@ -76,6 +76,18 @@ typedef struct repu_target_t {       // Track replicast target
 // target would have stored separately. This includes the queue of inbound
 // reservations and when the last disk write completion would have occurred.
 //
+typedef struct repu_rendezvous_xfer_received {
+    event_t event;          // rep_rendezvous_transfer_receieved is an event
+    chunk_put_handle_t  cp; // Handle of the chunk put
+    unsigned target_num;    // The target that received this rendezvous transfer
+} repu_rendezvous_xfer_received_t;
+//
+// The Rendezvous Transfer is received by each selected target for a specific
+// chunk put. it occurs when the full chunk transfer would be compelte.
+//
+// It is scheduled at the same time as the chunk_put_accept for the subset
+// of the negotiating group which was accepted.
+//
 
 static repu_target_t *repu = NULL;
 
@@ -407,8 +419,8 @@ static void handle_repu_xmit_complete (const event_t *e)
 // disk_write_completion can be scheduled.
 //
 {
-    const rep_rendezvous_xfer_received_t *rtr =
-        (const rep_rendezvous_xfer_received_t *)e;
+    const repu_rendezvous_xfer_received_t *rtr =
+        (const repu_rendezvous_xfer_received_t *)e;
     repu_target_t *tp = repu + rtr->target_num;
     tick_t write_start,write_complete;
     // repu_xmit_ack

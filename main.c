@@ -201,8 +201,6 @@ static void log_event (FILE *f,const protocol_t *sp,const event_t *e)
         const chunk_put_ready_t   *cpr;
         const rep_chunk_put_request_received_t *cpreq;
         const rep_chunk_put_response_received_t *cpresp;
-        const rep_chunk_put_accept_t *cpa;
-        const rep_rendezvous_xfer_received_t *rtr;
         const tcp_xmit_received_t *txr;
         const tcp_reception_complete_t *trc;
         const tcp_reception_ack_t *tra;

@@ -40,6 +40,7 @@ typedef struct omhudp_rendezvous_xfer_received {
     event_t event;          // rep_rendezvous_transfer_receieved is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // The target that received this rendezvous transfer
+    bool is_first;
 } omhudp_rendezvous_xfer_received_t;
 //
 // The Rendezvous Transfer is received by each selected target for a specific
@@ -337,9 +338,11 @@ static void handle_omhudp_chunk_put_ready (const event_t *e)
     xfer_event.event.tllist.time = lim;
     xfer_event.event.type = (event_type_t)OMHUDP_RENDEZVOUS_XFER_RECEIVED;
     xfer_event.cp = (chunk_put_handle_t)cp;
+    xfer_event.is_first = true;
     for (n = 0; n != config.n_replicas; ++n) {
         xfer_event.target_num = accepted_target[n];
         insert_event(xfer_event);
+        xfer_event.is_first = false;
     }
 }
 
@@ -465,8 +468,11 @@ void handle_omhudp_rendezvous_xfer_received (const event_t *e)
     //
     // schedule the next put request to start
     //
-    if ((new_cp = next_cp(cp->cp.gateway,omhudp_sim.cp_size)) != NULL)
-        insert_next_chunk_put_ready(new_cp,now+1);
+    if (rtr->is_first) {
+        if ((new_cp = next_cp(cp->cp.gateway,omhudp_sim.cp_size)) != NULL) {
+            insert_next_chunk_put_ready(new_cp,now+1);
+        }
+    }
 }
 
 void log_omhudp_rendezvous_xfer_received (FILE *f,const event_t *e)

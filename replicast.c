@@ -44,6 +44,36 @@ typedef struct rep_target_t {       // Track replicast target
 // reservations and when the last disk write completion would have occurred.
 //
 
+typedef struct rep_chunk_put_accept {
+    event_t event;          // chunk_put_accept is an event
+    chunk_put_handle_t  cp; // Handle of the chunk put
+    tick_t  window_start;   // The start of the accepted window
+    tick_t  window_lim;     // The end of the accepted window
+    unsigned target_num;    // Target_num of the target receiving this message
+    unsigned accepted_target[MAX_REPLICAS]; // the accepted targets
+} rep_chunk_put_accept_t;
+//
+// The Chunk Put Accept message is the 3rdc step in the Replicast Negotiation.
+//
+// it is sent by the originating Gateway to each target in the Negotiating Group
+// to tell them what subset of the group has been selected for the Rendezvous
+// Transfer, and what subset of offered reserved inbound window has been
+// accepted.
+
+
+typedef struct rep_rendezvous_xfer_received {
+    event_t event;          // rep_rendezvous_transfer_receieved is an event
+    chunk_put_handle_t  cp; // Handle of the chunk put
+    unsigned target_num;    // The target that received this rendezvous transfer
+} rep_rendezvous_xfer_received_t;
+//
+// The Rendezvous Transfer is received by each selected target for a specific
+// chunk put. it occurs when the full chunk transfer would be compelte.
+//
+// It is scheduled at the same time as the chunk_put_accept for the subset
+// of the negotiating group which was accepted.
+//
+
 static rep_target_t *repu = NULL;
 
 #define for_ng(target,ng) \

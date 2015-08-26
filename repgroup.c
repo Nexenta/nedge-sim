@@ -49,6 +49,34 @@ typedef struct rep_target_t {       // Track replicast target
 // reservations and when the last disk write completion would have occurred.
 //
 
+typedef struct rg_chunk_put_accept {
+    event_t event;          // chunk_put_accept is an event
+    chunk_put_handle_t  cp; // Handle of the chunk put
+    tick_t  window_start;   // The start of the accepted window
+    tick_t  window_lim;     // The end of the accepted window
+    unsigned target_num;    // Target_num of the target receiving this message
+    unsigned accepted_target[MAX_REPLICAS]; // the accepted targets
+} rg_chunk_put_accept_t;
+//
+// The Chunk Put Accept message is the 3rdc step in the Replicast Negotiation.
+//
+// it is sent by the originating Gateway to each target in the Negotiating Group
+// to tell them what subset of the group has been selected for the Rendezvous
+// Transfer, and what subset of offered reserved inbound window has been
+// accepted.
+
+typedef struct rg_rendezvous_xfer_received {
+    event_t event;          // rep_rendezvous_transfer_receieved is an event
+    chunk_put_handle_t  cp; // Handle of the chunk put
+    unsigned target_num;    // The target that received this rendezvous transfer
+} rg_rendezvous_xfer_received_t;
+//
+// The Rendezvous Transfer is received by each selected target for a specific
+// chunk put. it occurs when the full chunk transfer would be compelte.
+//
+// It is scheduled at the same time as the chunk_put_accept for the subset
+// of the negotiating group which was accepted.
+//
 static rep_target_t *rgt = NULL;
 
 #define for_ng(target,ng) \
@@ -256,8 +284,8 @@ static void handle_rg_chunk_put_response_received (const event_t *e)
 {
     const rep_chunk_put_response_received_t *cprr =
     (const rep_chunk_put_response_received_t *)e;
-    rep_chunk_put_accept_t accept_event;
-    rep_rendezvous_xfer_received_t rendezvous_xfer_event;
+    rg_chunk_put_accept_t accept_event;
+    rg_rendezvous_xfer_received_t rendezvous_xfer_event;
     chunkput_rg_t *cp = (chunkput_rg_t *)cprr->cp;
     chunkput_t *new_cp;
     tick_t next_chunk_time;
@@ -587,7 +615,7 @@ static void handle_rg_chunk_put_accept_received (const event_t *e)
 // Otherwise the inbound_reservation can be erased.
 //
 {
-    const rep_chunk_put_accept_t *cpa = (const rep_chunk_put_accept_t *)e;
+    const rg_chunk_put_accept_t *cpa = (const rg_chunk_put_accept_t *)e;
     rep_target_t *tp;
     inbound_reservation_t *ir;
     
@@ -612,7 +640,7 @@ static void handle_rg_chunk_put_accept_received (const event_t *e)
 static void log_rg_chunk_put_accept_received (FILE *f,const event_t *e)
 {
     unsigned i;
-    const rep_chunk_put_accept_t *cpa = (const rep_chunk_put_accept_t *)e;
+    const rg_chunk_put_accept_t *cpa = (const rg_chunk_put_accept_t *)e;
     
     if (!config.terse) {
         fprintf(f, "0x%lx,0x%lx,REP_CHUNK_PUT_ACCEPT_RECEIVED,0x%lx,%d,CP,%d,",
@@ -641,8 +669,8 @@ static void handle_rg_rendezvous_xfer_received (const event_t *e)
 // disk_write_completion can be scheduled.
 //
 {
-    const rep_rendezvous_xfer_received_t *rtr =
-    (const rep_rendezvous_xfer_received_t *)e;
+    const rg_rendezvous_xfer_received_t *rtr =
+        (const rg_rendezvous_xfer_received_t *)e;
     rep_target_t *tp = rgt + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
     tick_t write_start,write_complete;
@@ -678,8 +706,8 @@ static void handle_rg_rendezvous_xfer_received (const event_t *e)
 
 static void log_rg_rendezvous_xfer_received (FILE *f,const event_t *e)
 {
-    const rep_rendezvous_xfer_received_t *rtr =
-    (const rep_rendezvous_xfer_received_t *)e;
+    const rg_rendezvous_xfer_received_t *rtr =
+        (const rg_rendezvous_xfer_received_t *)e;
     
     if (!config.terse) {
         fprintf(f,"0x%lx,0x%lx",e->tllist.time,e->create_time);
