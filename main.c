@@ -260,19 +260,6 @@ static void log_event (FILE *f,const protocol_t *sp,const event_t *e)
     else if (TRANSPORT_EVENT_BASE <= e->type  &&
              e->type < TRANSPORT_EVENT_BASE+NUM_PROTOCOL_SPECIFIC_EVENTS)
         sp->h[e->type - TRANSPORT_EVENT_BASE].log_func(f,e);
-
-#if 0
-
-        case TCP_RECEPTION_ACK:
-            break;
-         case NULL_EVENT:
-
-        case TRACK_SAMPLE:
-            fprintf(f,"0x%lx,0x%lx,TRACK_SAMPLE\n", e->tllist.time,
-                    e->create_time);
-            break;
-    }
-#endif
 }
 
 tick_t now = 0;
@@ -325,7 +312,7 @@ static void track_report (FILE *inflight_f)
         divup(track.n_active_targets * 100, derived.n_targets);
 
     fprintf(log_f,
-            "%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u%%",
+            "%s,track@,0x%lx,%u,%lu,%lu,%lu,%lu,%u,active-targets,%u,%u%%\n",
             protocol->tag,now,now_millis,
             track.n_initiated,track.n_writes_initiated,track.n_writes_completed,
             track.n_completions,completed_since_prev_report,
@@ -375,7 +362,7 @@ static void process_event (const protocol_t *sp,const event_t *e)
         assert(false);
 }
 
-static void start_gateway_thread (unsigned num)
+static void start_gateway_thread (unsigned num,size_t size)
 
 // replicast: create the first chunk_put_ready for this object, post it
 // once it is scheduled the next chunk_put_request can be sent.
@@ -388,7 +375,7 @@ static void start_gateway_thread (unsigned num)
     assert(gateway);
     gateway->num = num;
     gateway->n_chunks = 0;
-    cp = next_cp(gateway);
+    cp = next_cp(gateway,size);
     
     assert(cp);
     assert(!cp->mbz);
@@ -426,13 +413,13 @@ static void simulate (const protocol_t *sp)
     printf("\n%d Gateways (@%d MBS each) putting %d replicas of %dKB Chunks",
            config.n_gateways,config.gateway_mbs,config.n_replicas,
            config.chunk_size/1024);
-    printf(" to %d targets (@%d MBS each)\n",
-           derived.n_targets,config.mbs_per_target_drive);
+    printf(" to %d targets (@%d MBS each) using protocol %s\n",
+           derived.n_targets,config.mbs_per_target_drive,sp->name);
     
     e = (const event_t *)ehead.tllist.next;
     
     for (i = 0; i != config.n_gateways; ++i)
-        start_gateway_thread(i);
+        start_gateway_thread(i,sp->cp_size);
     
     for (now = 0L;
          now < config.sim_duration;
@@ -460,6 +447,8 @@ static void simulate (const protocol_t *sp)
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
     }
+    printf("Post-drain:");
+    report_duration_stats();
     free(track.durations);
     memset(&track,0,sizeof(trackers_t));
     memset(&track_prev,0,sizeof(trackers_t));

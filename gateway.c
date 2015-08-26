@@ -46,13 +46,20 @@
 
 static unsigned n_chunkputs = 0;
 
-chunkput_t *next_cp (gateway_t *gateway)
+chunkput_t *next_cp (gateway_t *gateway,size_t size)
+//
+// allocate and initialize a chunkput tracking struct
+//
+// gateway is struct for the gateway that will handle this chunk.
+// size is the size of the sub-type of chunkput needed.
+//
+
 {
     chunkput_t *cp;
-    
-    if (now > config.sim_duration) return (chunkput_t *)0;
+    if (now > config.sim_duration)
+        return (chunkput_t *)0;
 
-    cp = (chunkput_t *)calloc(1,sizeof(chunkput_t));
+    cp = (chunkput_t *)calloc(1,size);
     assert(cp);
     assert(!cp->mbz);
     
