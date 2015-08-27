@@ -362,7 +362,11 @@ static void handle_omhudp_chunk_put_ready (const event_t *e)
 
 static void log_omhudp_chunk_put_ready (FILE *f,const event_t *e)
 {
-    fprintf(f,"omhtcp,CHUNK_PUT_READY\n");
+    const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
+    const chunkput_t *cp = (const chunkput_t *)cpr->cp;
+    
+    fprintf(f,"omhtcp,CHUNK_PUT_READY,%d,gateway,%d,@%ld\n",cp->seqnum,
+            cp->gateway->num,now);
 }
 
 target_t *omhudp_target (unsigned target_num)
@@ -532,8 +536,8 @@ void report_omhudp_chunk_distribution (FILE *f)
 }
 
 protocol_t omhudp_sim = {
-    .tag = "omhudp",
-    .name = "Omniscient Hash-UDP",
+    .tag = "omhcast",
+    .name = "Omniscient Hash-Multicast",
     .cp_size = sizeof(chunkput_omhudp_t),
     .init_target = init_omhudp_targets,
     .target = omhudp_target,

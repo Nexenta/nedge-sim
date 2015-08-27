@@ -459,8 +459,8 @@ void report_omhtcp_chunk_distribution (FILE *f)
 }
 
 protocol_t omhtcp_sim = {
-    .tag = "omhtcp",
-    .name = "Omniscient Hash-TCP",
+    .tag = "omhunicast",
+    .name = "Omniscient Hash-Unicast",
     .cp_size = sizeof(chunkput_omhtcp_t),
     .do_me = false,
     .init_target = init_omhtcp_targets,
