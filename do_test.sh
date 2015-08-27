@@ -10,8 +10,8 @@ gateway_mbs=$6
 set -x
 ./test terse gateways $gws chunk_size $chunk_size ngs $ngs penalty $penalty gateway_mbs $gateway_mbs mbs 1200 seed 5791 duration 50 outprefix $name."rep" rep | tee $name.rep.txt
 ./test terse gateways $gws chunk_size $chunk_size ngs $ngs penalty $penalty gateway_mbs $gateway_mbs mbs 1200 seed 5791 duration 50 outprefix $name."chtcp" chtcp | tee $name.chtcp.txt
-./test terse gateways $gws chunk_size $chunk_size ngs $ngs penalty $penalty gateway_mbs $gateway_mbs mbs 1200 seed 5791 duration 50 outprefix $name."omhtcp" omhunicast | tee $name.omhtcp.txt
-./test terse gateways $gws chunk_size $chunk_size ngs $ngs penalty $penalty gateway_mbs $gateway_mbs mbs 1200 seed 5791 duration 50 outprefix $name."omhudp" omhcast | tee $name.omhudp.txt
+./test terse gateways $gws chunk_size $chunk_size ngs $ngs penalty $penalty gateway_mbs $gateway_mbs mbs 1200 seed 5791 duration 50 outprefix $name."omhtcp" omhucast | tee $name.omhtcp.txt
+./test terse gateways $gws chunk_size $chunk_size ngs $ngs penalty $penalty gateway_mbs $gateway_mbs mbs 1200 seed 5791 duration 50 outprefix $name."omhudp" omhmcast | tee $name.omhudp.txt
 
 [ -f $name.tgz ] && rm $name.tgz
 tar zcf $name.tgz $name.* $name.*.csv
