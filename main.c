@@ -493,7 +493,7 @@ static void derive_config (void)
     }
 }
 
-static char *open_prefix = NULL;
+static char open_prefix[30];
 
 static FILE *open_outf (const char *type)
 {
@@ -501,7 +501,7 @@ static FILE *open_outf (const char *type)
     
     assert(strlen(type) <= 20);
 
-    if (open_prefix)
+    if (open_prefix[0])
         sprintf(name,"%s.%s.csv",open_prefix,type);
     else
         sprintf(name,"%s.csv",type);
@@ -626,7 +626,7 @@ static void customize_config (int argc, const char ** argv)
             --argv,++argc;
         }
         else if (0 == strcmp(*argv,"outprefix"))
-            open_prefix = strdup(argv[1]);
+            strncpy(open_prefix,argv[1],(sizeof open_prefix)-1);
         else if ((p = protocol_match(*argv)) != NULL) {
             p->do_me = true;
             ++n_protocols;
