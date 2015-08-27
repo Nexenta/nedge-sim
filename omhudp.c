@@ -15,17 +15,17 @@
 
 #include "storage_cluster_sim.h"
 
-typedef struct chunkput_omhudp {
+typedef struct chunkput_omhmcast {
     chunkput_t  cp;
     unsigned acked;
-} chunkput_omhudp_t;
+} chunkput_omhmcast_t;
 
-typedef enum omhudp_event_type { // extends enum event_type
-    OMHUDP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
-    OMHUDP_RENDEZVOUS_XFER_RECEIVED
-} omhudp_event_type_t;
+typedef enum omhmcast_event_type { // extends enum event_type
+    OMHMCAST_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
+    OMHMCAST_RENDEZVOUS_XFER_RECEIVED
+} omhmcast_event_type_t;
 
-typedef struct omhudp_target_t {
+typedef struct omhmcast_target {
     // Track a omniscient hash target
     target_t    common;             // common tracking fields
     inbound_reservation_t ir_head;  // tllist of inbound reservations
@@ -34,14 +34,14 @@ typedef struct omhudp_target_t {
                                         // this target
     unsigned chunks_put;
     unsigned mbz;   // debugging paranoia
-} omhudp_target_t;
+} omhmcast_target_t;
 
-typedef struct omhudp_rendezvous_xfer_received {
+typedef struct omhmcast_rendezvous_xfer_received {
     event_t event;          // rep_rendezvous_transfer_receieved is an event
     chunk_put_handle_t  cp; // Handle of the chunk put
     unsigned target_num;    // The target that received this rendezvous transfer
     bool is_first;
-} omhudp_rendezvous_xfer_received_t;
+} omhmcast_rendezvous_xfer_received_t;
 //
 // The Rendezvous Transfer is received by each selected target for a specific
 // chunk put. it occurs when the full chunk transfer would be compelte.
@@ -50,7 +50,7 @@ typedef struct omhudp_rendezvous_xfer_received {
 // of the negotiating group which was accepted.
 //
 
-static omhudp_target_t *omhudp_tgt = NULL;
+static omhmcast_target_t *omhmcast_tgt = NULL;
 
 #define for_ng(target,ng) \
     for ((target) = (ng);\
@@ -58,7 +58,7 @@ static omhudp_target_t *omhudp_tgt = NULL;
     (target) += config.n_negotiating_groups)
 
 static inbound_reservation_t *ir_find_by_cp (
-                                             omhudp_target_t *tp,
+                                             omhmcast_target_t *tp,
                                              chunk_put_handle_t cp
                                              )
 //
@@ -87,7 +87,7 @@ static void make_bid (unsigned target_num,bid_t *bid)
 
 {
     inbound_reservation_t *p;
-    omhudp_target_t *tp = omhudp_tgt + target_num;
+    omhmcast_target_t *tp = omhmcast_tgt + target_num;
     tick_t s;
     bool delayed;
 
@@ -210,7 +210,7 @@ static unsigned acceptable_bid_set (bid_t *bids,unsigned nbids,unsigned *best)
     return n;
 }
 
-static void select_targets (const chunkput_omhudp_t *c,
+static void select_targets (const chunkput_omhmcast_t *c,
                             unsigned nbids,
                             bid_t *bids,
                             unsigned *accepted_target,
@@ -229,7 +229,7 @@ static void select_targets (const chunkput_omhudp_t *c,
     unsigned max_qdepth;
     unsigned bids_base;
     bid_t *b;
-    omhudp_target_t *tp;
+    omhmcast_target_t *tp;
     tick_t estimated_write_start;
     
     assert (nbids <= config.n_targets_per_ng);
@@ -237,7 +237,7 @@ static void select_targets (const chunkput_omhudp_t *c,
     qsort(bids,nbids,sizeof(bid_t),bid_compare);
     if (!config.terse) {
         for (n = 0; n != nbids; ++n) {
-            fprintf(bid_f,"omhudp_BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Tgt,%d",
+            fprintf(bid_f,"omhmcast_BIDS:CP #,%d,Start,%ld,Lim,%ld,Qdepth,%d,Tgt,%d",
                     c->cp.seqnum,bids[n].start,bids[n].lim,bids[n].queue_depth,
                     bids[n].target_num);
             fprintf(bid_f,",EstAck,%ld\n",bids[n].estimated_ack);
@@ -269,7 +269,7 @@ static void select_targets (const chunkput_omhudp_t *c,
         inc_target_total_queue(b[m].target_num);
         
         estimated_write_start = b[m].lim;
-        tp = omhudp_tgt + accepted_target[m];
+        tp = omhmcast_tgt + accepted_target[m];
         
         if (tp->last_disk_write_completion > estimated_write_start)
             estimated_write_start = tp->last_disk_write_completion;
@@ -284,7 +284,7 @@ static void select_targets (const chunkput_omhudp_t *c,
     return;
 }
 
-static void omniscient_target_select(chunkput_omhudp_t *cp,
+static void omniscient_target_select(chunkput_omhmcast_t *cp,
                                      unsigned *accepted_target,
                                      tick_t *start,
                                      tick_t *lim)
@@ -301,7 +301,7 @@ static void omniscient_target_select(chunkput_omhudp_t *cp,
     unsigned n = 0;
     bid_t bid[MAX_TARGETS_PER_NG];
     inbound_reservation_t *ir;
-    omhudp_target_t *tp;
+    omhmcast_target_t *tp;
     inbound_reservation_t *insert_after;
     
     assert (cp);
@@ -321,7 +321,7 @@ static void omniscient_target_select(chunkput_omhudp_t *cp,
         ir->cp = (chunk_put_handle_t)cp;
         ir->tllist.time = *start;
         ir->lim = *lim;
-        tp = omhudp_tgt + accepted_target[n];
+        tp = omhmcast_tgt + accepted_target[n];
         insert_after = (inbound_reservation_t *)
             tllist_find((tllist_t *)&tp->ir_head,*start);
         tllist_insert ((tllist_t *)insert_after,(tllist_t *)ir);
@@ -335,11 +335,11 @@ static void omniscient_target_select(chunkput_omhudp_t *cp,
 // 3 packets for TCP connectino setup plus minimal pre-transfer data
 // The cluster_trip_time must still be added to this.
 
-static void handle_omhudp_chunk_put_ready (const event_t *e)
+static void handle_omhmcast_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
-    chunkput_omhudp_t *cp = (chunkput_omhudp_t *)cpr->cp;
-    omhudp_rendezvous_xfer_received_t xfer_event;
+    chunkput_omhmcast_t *cp = (chunkput_omhmcast_t *)cpr->cp;
+    omhmcast_rendezvous_xfer_received_t xfer_event;
     unsigned accepted_target[MAX_REPLICAS];
     tick_t start,lim;
     unsigned n;
@@ -350,7 +350,7 @@ static void handle_omhudp_chunk_put_ready (const event_t *e)
     omniscient_target_select(cp,accepted_target,&start,&lim);
     xfer_event.event.create_time = now+1;
     xfer_event.event.tllist.time = lim;
-    xfer_event.event.type = (event_type_t)OMHUDP_RENDEZVOUS_XFER_RECEIVED;
+    xfer_event.event.type = (event_type_t)OMHMCAST_RENDEZVOUS_XFER_RECEIVED;
     xfer_event.cp = (chunk_put_handle_t)cp;
     xfer_event.is_first = true;
     for (n = 0; n != config.n_replicas; ++n) {
@@ -360,7 +360,7 @@ static void handle_omhudp_chunk_put_ready (const event_t *e)
     }
 }
 
-static void log_omhudp_chunk_put_ready (FILE *f,const event_t *e)
+static void log_omhmcast_chunk_put_ready (FILE *f,const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
     const chunkput_t *cp = (const chunkput_t *)cpr->cp;
@@ -369,12 +369,12 @@ static void log_omhudp_chunk_put_ready (FILE *f,const event_t *e)
             cp->gateway->num,now);
 }
 
-target_t *omhudp_target (unsigned target_num)
+target_t *omhmcast_target (unsigned target_num)
 {
-    return &omhudp_tgt[target_num].common;
+    return &omhmcast_tgt[target_num].common;
 }
 
-void init_omhudp_targets(unsigned n_targets)
+void init_omhmcast_targets(unsigned n_targets)
 //
 // Initialize the target subsystem, specifically the irhead for each
 // entry in the target_t array 't' must be set to empty.
@@ -383,27 +383,28 @@ void init_omhudp_targets(unsigned n_targets)
 {
     unsigned n;
     
-    assert(!omhudp_tgt);
+    assert(!omhmcast_tgt);
     
-    omhudp_tgt = (omhudp_target_t *)calloc(n_targets,sizeof(omhudp_target_t));
+    omhmcast_tgt =
+        (omhmcast_target_t *)calloc(n_targets,sizeof(omhmcast_target_t));
     
-    assert(omhudp_tgt);
+    assert(omhmcast_tgt);
     for (n = 0;n != n_targets;++n) {
-        omhudp_tgt[n].ir_head.tllist.next =
-        omhudp_tgt[n].ir_head.tllist.prev =
-        &omhudp_tgt[n].ir_head.tllist;
+        omhmcast_tgt[n].ir_head.tllist.next =
+        omhmcast_tgt[n].ir_head.tllist.prev =
+        &omhmcast_tgt[n].ir_head.tllist;
     }
 }
 
-void release_omhudp_targets (void)
+void release_omhmcast_targets (void)
 {
-    assert(omhudp_tgt);
+    assert(omhmcast_tgt);
     
-    free(omhudp_tgt);
-    omhudp_tgt = (omhudp_target_t *)0;
+    free(omhmcast_tgt);
+    omhmcast_tgt = (omhmcast_target_t *)0;
 }
 
-static void ir_remove (omhudp_target_t *tp,inbound_reservation_t *ir)
+static void ir_remove (omhmcast_target_t *tp,inbound_reservation_t *ir)
 //
 // remove inbound_reservation from the target linked list holding.
 // decrement target's count of inbound_reservations
@@ -430,7 +431,7 @@ static void ir_remove (omhudp_target_t *tp,inbound_reservation_t *ir)
     assert(tp->ir_queue_depth >= 0);
 }
 
-void handle_omhudp_rendezvous_xfer_received (const event_t *e)
+void handle_omhmcast_rendezvous_xfer_received (const event_t *e)
 
 //
 // When a specific target receives a complete valid Rendevous Transfer
@@ -448,11 +449,11 @@ void handle_omhudp_rendezvous_xfer_received (const event_t *e)
 //
 
 {
-    const omhudp_rendezvous_xfer_received_t *rtr =
-        (const omhudp_rendezvous_xfer_received_t *)e;
-    omhudp_target_t *tp = omhudp_tgt + rtr->target_num;
+    const omhmcast_rendezvous_xfer_received_t *rtr =
+        (const omhmcast_rendezvous_xfer_received_t *)e;
+    omhmcast_target_t *tp = omhmcast_tgt + rtr->target_num;
     inbound_reservation_t *ir = ir_find_by_cp(tp,rtr->cp);
-    chunkput_omhudp_t *cp = (chunkput_omhudp_t *)rtr->cp;
+    chunkput_omhmcast_t *cp = (chunkput_omhmcast_t *)rtr->cp;
     chunkput_t *new_cp;
     tick_t write_start,write_complete;
     disk_write_start_t dws;
@@ -487,19 +488,19 @@ void handle_omhudp_rendezvous_xfer_received (const event_t *e)
     // schedule the next put request to start
     //
     if (rtr->is_first) {
-        if ((new_cp = next_cp(cp->cp.gateway,omhudp_sim.cp_size)) != NULL) {
+        if ((new_cp = next_cp(cp->cp.gateway,omhmcast_prot.cp_size)) != NULL) {
             insert_next_chunk_put_ready(new_cp,now+1);
         }
     }
 }
 
-void log_omhudp_rendezvous_xfer_received (FILE *f,const event_t *e)
+void log_omhmcast_rendezvous_xfer_received (FILE *f,const event_t *e)
 {
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,omhudp_rendezvous_xfer,0x%lx,%d,tgt,%d\n",
+        fprintf(f,"0x%lx,0x%lx,omhmcast_rendezvous_xfer,0x%lx,%d,tgt,%d\n",
                 e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
                 txr->target_num);
     }
@@ -508,18 +509,18 @@ void log_omhudp_rendezvous_xfer_received (FILE *f,const event_t *e)
 
 
 #define MAX_TALLY 2048
-void report_omhudp_chunk_distribution (FILE *f)
+void report_omhmcast_chunk_distribution (FILE *f)
 
 // Report distribution of chunks to targets to log_f
 
 {
     unsigned tally[MAX_TALLY];
-    const omhudp_target_t *tp;
-    const omhudp_target_t *tp_lim;
+    const omhmcast_target_t *tp;
+    const omhmcast_target_t *tp_lim;
     unsigned n,max_n;
     
     memset(tally,0,sizeof tally);
-    for (tp =  omhudp_tgt, tp_lim = omhudp_tgt + derived.n_targets, max_n = 0;
+    for (tp =  omhmcast_tgt, tp_lim = omhmcast_tgt + derived.n_targets, max_n = 0;
          tp != tp_lim;
          ++tp)
     {
@@ -535,18 +536,18 @@ void report_omhudp_chunk_distribution (FILE *f)
     }
 }
 
-protocol_t omhudp_sim = {
-    .tag = "omhcast",
+protocol_t omhmcast_prot = {
+    .tag = "omhmcast",
     .name = "Omniscient Hash-Multicast",
-    .cp_size = sizeof(chunkput_omhudp_t),
-    .init_target = init_omhudp_targets,
-    .target = omhudp_target,
-    .report_chunk_distribution = report_omhudp_chunk_distribution,
-    .release_targets = release_omhudp_targets,
+    .cp_size = sizeof(chunkput_omhmcast_t),
+    .init_target = init_omhmcast_targets,
+    .target = omhmcast_target,
+    .report_chunk_distribution = report_omhmcast_chunk_distribution,
+    .release_targets = release_omhmcast_targets,
     .h = {
-        {handle_omhudp_chunk_put_ready,log_omhudp_chunk_put_ready},
-        {handle_omhudp_rendezvous_xfer_received,
-            log_omhudp_rendezvous_xfer_received}
+        {handle_omhmcast_chunk_put_ready,log_omhmcast_chunk_put_ready},
+        {handle_omhmcast_rendezvous_xfer_received,
+            log_omhmcast_rendezvous_xfer_received}
     }
 };
 

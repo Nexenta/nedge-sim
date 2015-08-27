@@ -9,20 +9,20 @@
 
 #include "storage_cluster_sim.h"
 
-typedef struct chunkput_omhtcp {
+typedef struct chunkput_omhucast {
     chunkput_t  cp;
     unsigned ch_targets[MAX_REPLICAS]; // selected targets
     unsigned repnum;                    // # of replicas previously generated.
     unsigned acked;
     unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for any target
-} chunkput_omhtcp_t;
+} chunkput_omhucast_t;
 
-typedef enum omhctp_event_type { // extends enum event_type
-    OMHTCP_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
-    OMHTCP_XMIT_RECEIVED,
-    OMHTCP_RECEPTION_COMPLETE,
-    OMHTCP_RECEPTION_ACK
-} omhctp_event_type_t;
+typedef enum omhucast_event_type { // extends enum event_type
+    OMHUCAST_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
+    OMHUCAST_XMIT_RECEIVED,
+    OMHUCAST_RECEPTION_COMPLETE,
+    OMHUCAST_RECEPTION_ACK
+} omhucast_event_type_t;
 
 typedef struct ongoing_reception {
     // tracks an ongoing TCP reception to a target
@@ -34,7 +34,7 @@ typedef struct ongoing_reception {
     // over lifespan of this reception.
 } ongoing_reception_t;
 
-typedef struct omhtcp_target_t {
+typedef struct omhucast_target {
     // Track a omniscient hash target
     target_t    common; // common tracking fields
     unsigned n_ongoing_receptions;  // # of ongoing TCP receptions
@@ -43,21 +43,21 @@ typedef struct omhtcp_target_t {
     // this target
     unsigned chunks_put;
     unsigned mbz;   // debugging paranoia
-} omhtcp_target_t;
+} omhucast_target_t;
 //
 // A struct target represents the target specific data that each individual
 // target would have stored separately. This includes the queue of inbound
 // reservations and when the last disk write completion would have occurred.
 //
 
-static omhtcp_target_t *omhtcp_tgt = NULL;
+static omhucast_target_t *omhucast_tgt = NULL;
 
 #define MINIMUM_TCPV6_BYTES 74
 #define TCP_CHUNK_SETUP_BYTES (3*MINIMUM_TCPV6_BYTES+200)
 // 3 packets for TCP connectino setup plus minimal pre-transfer data
 // The cluster_trip_time must still be added to this.
 
-static void next_tcp_replica_xmit (chunkput_omhtcp_t *cp,tick_t time_now)
+static void next_tcp_replica_xmit (chunkput_omhucast_t *cp,tick_t time_now)
 
 // Schedule the next TCP transmit start after the previous tcp transmit for
 // the same object has completed
@@ -70,7 +70,7 @@ static void next_tcp_replica_xmit (chunkput_omhtcp_t *cp,tick_t time_now)
         txr.event.create_time = time_now;
         txr.event.tllist.time = time_now + config.cluster_trip_time*3 +
         TCP_CHUNK_SETUP_BYTES*8;
-        txr.event.type = (event_type_t)OMHTCP_XMIT_RECEIVED;
+        txr.event.type = (event_type_t)OMHUCAST_XMIT_RECEIVED;
         txr.cp = (chunk_put_handle_t)cp;
         r = cp->repnum++;
         txr.target_num = cp->ch_targets[r];
@@ -87,18 +87,18 @@ static bool already_in_list (unsigned tgt,unsigned *list,unsigned n)
     return false;
 }
 
-static void omniscient_target_select(chunkput_omhtcp_t *cp)
+static void omniscient_target_select(chunkput_omhucast_t *cp)
 {
     unsigned tgt, wrap_tgt;
     unsigned *next_select = cp->ch_targets;
     unsigned *select_lim = next_select + config.n_replicas;
-    omhtcp_target_t *tp;
+    omhucast_target_t *tp;
     unsigned thresh = 0;
     unsigned n_selected = 0;
     
     for (tgt = wrap_tgt = rand() % derived.n_targets;;) {
         if (!already_in_list(tgt,cp->ch_targets,n_selected)) {
-            tp = omhtcp_tgt + tgt;
+            tp = omhucast_tgt + tgt;
             if (tp->common.total_inflight <= thresh) {
                 ++n_selected;
                 *next_select++ = tgt;
@@ -115,10 +115,10 @@ static void omniscient_target_select(chunkput_omhtcp_t *cp)
     return;
 }
 
-static void handle_omhtcp_chunk_put_ready (const event_t *e)
+static void handle_omhucast_chunk_put_ready (const event_t *e)
 {
     const chunk_put_ready_t *cpr = (const chunk_put_ready_t *)e;
-    chunkput_omhtcp_t *cp = (chunkput_omhtcp_t *)cpr->cp;
+    chunkput_omhucast_t *cp = (chunkput_omhucast_t *)cpr->cp;
     
     assert (cp);
     assert(!cp->cp.mbz);
@@ -127,12 +127,12 @@ static void handle_omhtcp_chunk_put_ready (const event_t *e)
     next_tcp_replica_xmit(cp,e->tllist.time);
 }
 
-static void log_omhtcp_chunk_put_ready (FILE *f,const event_t *e)
+static void log_omhucast_chunk_put_ready (FILE *f,const event_t *e)
 {
-    fprintf(f,"omhtcp,CHUNK_PUT_READY\n");
+    fprintf(f,"omhucast,CHUNK_PUT_READY\n");
 }
 
-static void remove_tcp_reception_target (chunkput_omhtcp_t *cp,
+static void remove_tcp_reception_target (chunkput_omhucast_t *cp,
                                          unsigned target_num)
 
 // this is a sanity checking diagnostic.
@@ -149,7 +149,7 @@ static void remove_tcp_reception_target (chunkput_omhtcp_t *cp,
     }
 }
 
-static void handle_omhtcp_reception_ack (const event_t *e)
+static void handle_omhucast_reception_ack (const event_t *e)
 
 // Handle the TCP reception ack, which occurs before the REPLICA_ACK
 // The REPLICA_ACK occurs after the chunk replica is written.
@@ -157,7 +157,7 @@ static void handle_omhtcp_reception_ack (const event_t *e)
 
 {
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
-    chunkput_omhtcp_t *cp = (chunkput_omhtcp_t *)tra->cp;
+    chunkput_omhucast_t *cp = (chunkput_omhucast_t *)tra->cp;
     chunkput_t *new_cp;
     tick_t next_tcp_time;
     
@@ -170,11 +170,11 @@ static void handle_omhtcp_reception_ack (const event_t *e)
     if (next_tcp_time <= now) next_tcp_time = now+1;
     if (++cp->acked < config.n_replicas)
         next_tcp_replica_xmit(cp,next_tcp_time);
-    else if ((new_cp = next_cp(cp->cp.gateway,omhtcp_sim.cp_size)) != NULL)
+    else if ((new_cp = next_cp(cp->cp.gateway,omhucast_prot.cp_size)) != NULL)
         insert_next_chunk_put_ready(new_cp,next_tcp_time);
 }
 
-static void log_omhtcp_reception_ack (FILE *f,const event_t *e)
+static void log_omhucast_reception_ack (FILE *f,const event_t *e)
 {
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     
@@ -184,12 +184,12 @@ static void log_omhtcp_reception_ack (FILE *f,const event_t *e)
             tra->target_num);
 }
 
-target_t *omhtcp_target (unsigned target_num)
+target_t *omhucast_target (unsigned target_num)
 {
-    return &omhtcp_tgt[target_num].common;
+    return &omhucast_tgt[target_num].common;
 }
 
-void init_omhtcp_targets(unsigned n_targets)
+void init_omhucast_targets(unsigned n_targets)
 //
 // Initialize the target subsystem, specifically the irhead for each
 // entry in the target_t array 't' must be set to empty.
@@ -198,27 +198,28 @@ void init_omhtcp_targets(unsigned n_targets)
 {
     unsigned n;
     
-    assert(!omhtcp_tgt);
+    assert(!omhucast_tgt);
     
-    omhtcp_tgt = (omhtcp_target_t *)calloc(n_targets,sizeof(omhtcp_target_t));
+    omhucast_tgt =
+        (omhucast_target_t *)calloc(n_targets,sizeof(omhucast_target_t));
     
-    assert(omhtcp_tgt);
+    assert(omhucast_tgt);
     for (n = 0;n != n_targets;++n) {
-        omhtcp_tgt[n].orhead.tllist.next =
-        omhtcp_tgt[n].orhead.tllist.prev =
-        &omhtcp_tgt[n].orhead.tllist;
+        omhucast_tgt[n].orhead.tllist.next =
+        omhucast_tgt[n].orhead.tllist.prev =
+        &omhucast_tgt[n].orhead.tllist;
     }
 }
 
-void release_omhtcp_targets (void)
+void release_omhucast_targets (void)
 {
-    assert(omhtcp_tgt);
+    assert(omhucast_tgt);
     
-    free(omhtcp_tgt);
-    omhtcp_tgt = (omhtcp_target_t *)0;
+    free(omhucast_tgt);
+    omhucast_tgt = (omhucast_target_t *)0;
 }
 
-static void credit_ongoing_receptions (omhtcp_target_t *t,
+static void credit_ongoing_receptions (omhucast_target_t *t,
                                        unsigned current_num_receptions)
 {
     tllist_t *pnd;
@@ -226,7 +227,7 @@ static void credit_ongoing_receptions (omhtcp_target_t *t,
     tick_t  elapsed_time,credit;
     
     assert (t);
-    assert (t == &omhtcp_tgt[t-omhtcp_tgt]);
+    assert (t == &omhucast_tgt[t-omhucast_tgt]);
     
     for (pnd = t->orhead.tllist.next;
          pnd != &t->orhead.tllist;
@@ -254,7 +255,7 @@ static void schedule_tcp_reception_complete (unsigned target_num,
                                              chunk_put_handle_t cp
                                              )
 {
-    omhtcp_target_t *t = omhtcp_tgt + target_num;
+    omhucast_target_t *t = omhucast_tgt + target_num;
     tcp_reception_complete_t trc;
     ongoing_reception_t *ort;
     tick_t remaining_xfer;
@@ -268,14 +269,14 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     remaining_xfer = derived.chunk_tcp_xmit_duration - ort->credit;
     assert(t->n_ongoing_receptions);
     trc.event.tllist.time = now + remaining_xfer*t->n_ongoing_receptions;
-    trc.event.type = (event_type_t)OMHTCP_RECEPTION_COMPLETE;
+    trc.event.type = (event_type_t)OMHUCAST_RECEPTION_COMPLETE;
     trc.cp = cp;
     assert (target_num < derived.n_targets);
     trc.target_num = target_num;
     insert_event(trc);
 }
 
-void handle_omhtcp_xmit_received (const event_t *e)
+void handle_omhucast_xmit_received (const event_t *e)
 
 // A new tcp chunk transfer to target_num is beginning 'now'
 // We will simulate a miraculous TCP congestion algorithm which *instantly*
@@ -298,12 +299,11 @@ void handle_omhtcp_xmit_received (const event_t *e)
     tllist_t *tp;
     ongoing_reception_t *p;
     tllist_t *insert_point;
-    
-    omhtcp_target_t *t;
+    omhucast_target_t *t;
     
     assert (e);
     
-    t = omhtcp_tgt + txr->target_num;
+    t = omhucast_tgt + txr->target_num;
     ++t->chunks_put;
     
     fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
@@ -331,19 +331,19 @@ void handle_omhtcp_xmit_received (const event_t *e)
         schedule_tcp_reception_complete (txr->target_num,txr->cp);
 }
 
-void log_omhtcp_xmit_received (FILE *f,const event_t *e)
+void log_omhucast_xmit_received (FILE *f,const event_t *e)
 {
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
+        fprintf(f,"0x%lx,0x%lx,omhucast_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
                 e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
                 txr->target_num);
     }
 }
 
-void handle_omhtcp_reception_complete (const event_t *e)
+void handle_omhucast_reception_complete (const event_t *e)
 
 // handle the expected completion of a TCP chunk reception.
 //
@@ -359,7 +359,7 @@ void handle_omhtcp_reception_complete (const event_t *e)
     tcp_reception_ack_t tcp_ack;
     ongoing_reception_t *ort,*ort_next;
     disk_write_start_t dws;
-    omhtcp_target_t *t;
+    omhucast_target_t *t;
     tick_t write_start,write_completion;
     unsigned n;
     tick_t write_variance =
@@ -370,7 +370,7 @@ void handle_omhtcp_reception_complete (const event_t *e)
     
     assert (e); (void)e;
     
-    t = omhtcp_tgt + trc->target_num;
+    t = omhucast_tgt + trc->target_num;
     tcp_ack.target_num = trc->target_num;
     dws.target_num = trc->target_num;
     
@@ -387,7 +387,7 @@ void handle_omhtcp_reception_complete (const event_t *e)
         }
         tcp_ack.event.create_time = e->tllist.time;
         tcp_ack.event.tllist.time = e->tllist.time + config.cluster_trip_time;
-        tcp_ack.event.type = (event_type_t)OMHTCP_RECEPTION_ACK;
+        tcp_ack.event.type = (event_type_t)OMHUCAST_RECEPTION_ACK;
         tcp_ack.cp = ort->cp;
         tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
         insert_event(tcp_ack);
@@ -418,31 +418,31 @@ void handle_omhtcp_reception_complete (const event_t *e)
     }
 }
 
-void log_omhtcp_reception_complete (FILE *f,const event_t *e)
+void log_omhucast_reception_complete (FILE *f,const event_t *e)
 {
     const tcp_reception_complete_t *txr = (const tcp_reception_complete_t *)e;
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
+        fprintf(f,"0x%lx,0x%lx,OMHUCAST_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
                 e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
                 txr->target_num);
     }
 }
 
 #define MAX_TALLY 2048
-void report_omhtcp_chunk_distribution (FILE *f)
+void report_omhucast_chunk_distribution (FILE *f)
 
 // Report distribution of chunks to targets to log_f
 
 {
     unsigned tally[MAX_TALLY];
-    const omhtcp_target_t *tp;
-    const omhtcp_target_t *tp_lim;
+    const omhucast_target_t *tp;
+    const omhucast_target_t *tp_lim;
     unsigned n,max_n;
     
     memset(tally,0,sizeof tally);
-    for (tp =  omhtcp_tgt, tp_lim = omhtcp_tgt + derived.n_targets, max_n = 0;
+    for (tp =  omhucast_tgt, tp_lim = omhucast_tgt+derived.n_targets, max_n = 0;
          tp != tp_lim;
          ++tp)
     {
@@ -451,27 +451,27 @@ void report_omhtcp_chunk_distribution (FILE *f)
         ++tally[n];
         if (n > max_n) max_n = n;
     }
-    fprintf(f,"OMHTCP Chunks per target distribution:\n");
+    fprintf(f,"OMHUCAST Chunks per target distribution:\n");
     for (n = 0;;++n) {
         fprintf(f,"%d --> %d\n",n,tally[n]);
         if (n == max_n) break;
     }
 }
 
-protocol_t omhtcp_sim = {
-    .tag = "omhunicast",
+protocol_t omhucast_prot = {
+    .tag = "omhucast",
     .name = "Omniscient Hash-Unicast",
-    .cp_size = sizeof(chunkput_omhtcp_t),
+    .cp_size = sizeof(chunkput_omhucast_t),
     .do_me = false,
-    .init_target = init_omhtcp_targets,
-    .target = omhtcp_target,
-    .report_chunk_distribution = report_omhtcp_chunk_distribution,
-    .release_targets = release_omhtcp_targets,
+    .init_target = init_omhucast_targets,
+    .target = omhucast_target,
+    .report_chunk_distribution = report_omhucast_chunk_distribution,
+    .release_targets = release_omhucast_targets,
     .h = {
-        {handle_omhtcp_chunk_put_ready,log_omhtcp_chunk_put_ready},
-        {handle_omhtcp_xmit_received,log_omhtcp_xmit_received},
-        {handle_omhtcp_reception_complete,log_omhtcp_reception_complete},
-        {handle_omhtcp_reception_ack,log_omhtcp_reception_ack}
+        {handle_omhucast_chunk_put_ready,log_omhucast_chunk_put_ready},
+        {handle_omhucast_xmit_received,log_omhucast_xmit_received},
+        {handle_omhucast_reception_complete,log_omhucast_reception_complete},
+        {handle_omhucast_reception_ack,log_omhucast_reception_ack}
     }
 };
 

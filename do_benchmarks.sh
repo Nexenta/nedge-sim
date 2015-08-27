@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-./do_test.sh gw64ng128c4K.p.400 rep64 4 128 20000 400 
-./do_test.sh gw256ng128c4K.p.400 256 /4 128 20000 400 
+./do_test.sh gw64ng128c4K.p.400 64 4 128 20000 400 
+./do_test.sh gw256ng128c4K.p.400 256 4 128 20000 400 
 ./do_test.sh gw64ng128c128K.p.400 64 128 128 20000 400 
 ./do_test.sh gw256ng128c128K.p.400 256 128 128 20000 400
 ./do_test.sh gw512ng128c4K.p.400 512 4 128 20000 400 

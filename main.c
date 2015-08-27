@@ -538,9 +538,9 @@ static void log_config (FILE *f)
 {
     float duration_msecs;
     
-    if (replicast_sim.do_me) fprintf (f,"simulating Replicast\n");
-    if (chtcp_sim.do_me) fprintf (f,"simulating CH/TCP\n");
-    if (omhtcp_sim.do_me) fprintf (f,"simulating Omniscient Hash\n");
+    if (replicast_prot.do_me) fprintf (f,"simulating Replicast\n");
+    if (chucast_prot.do_me) fprintf (f,"simulating CH/TCP\n");
+    if (omhucast_prot.do_me) fprintf (f,"simulating Omniscient Hash\n");
     duration_msecs = (float)config.sim_duration * 1000 / TICKS_PER_SECOND;
     fprintf(f,"config.sim_duration:%lu (0x%lx) ticks = %.2f msecs\n",
             config.sim_duration, config.sim_duration,duration_msecs);
@@ -572,12 +572,12 @@ static void log_config (FILE *f)
 
 static protocol_t *protocol_match (const char *protocol_tag)
 {
-    return (0 == strcmp(protocol_tag,replicast_sim.tag)) ? &replicast_sim
-    : (0 == strcmp(protocol_tag,repucast_sim.tag)) ? & repucast_sim
-    : (0 == strcmp(protocol_tag,repgroup_sim.tag)) ? &repgroup_sim
-    : (0 == strcmp(protocol_tag,chtcp_sim.tag)) ? &chtcp_sim
-    : (0 == strcmp(protocol_tag,omhtcp_sim.tag)) ? &omhtcp_sim
-    : (0 == strcmp(protocol_tag,omhudp_sim.tag)) ? &omhudp_sim
+    return (0 == strcmp(protocol_tag,replicast_prot.tag)) ? &replicast_prot
+    : (0 == strcmp(protocol_tag,repucast_prot.tag)) ? & repucast_prot
+    : (0 == strcmp(protocol_tag,rg_prot.tag)) ? &rg_prot
+    : (0 == strcmp(protocol_tag,chucast_prot.tag)) ? &chucast_prot
+    : (0 == strcmp(protocol_tag,omhucast_prot.tag)) ? &omhucast_prot
+    : (0 == strcmp(protocol_tag,omhmcast_prot.tag)) ? &omhmcast_prot
     : (protocol_t *)0;
 }
 
@@ -639,7 +639,7 @@ static void customize_config (int argc, const char ** argv)
         }
     }
     if (!n_protocols)
-        replicast_sim.do_me = chtcp_sim.do_me = true;
+        replicast_prot.do_me = chucast_prot.do_me = true;
 }
 
 static void sim_protocol (const protocol_t *p)
@@ -667,12 +667,12 @@ int main(int argc, const char * argv[]) {
     
     log_config(log_f);
     
-    sim_protocol(&replicast_sim);
-    sim_protocol(&repucast_sim);
-    sim_protocol(&repgroup_sim);
-    sim_protocol(&chtcp_sim);
-    sim_protocol(&omhtcp_sim);
-    sim_protocol(&omhudp_sim);
+    sim_protocol(&replicast_prot);
+    sim_protocol(&repucast_prot);
+    sim_protocol(&rg_prot);
+    sim_protocol(&chucast_prot);
+    sim_protocol(&omhucast_prot);
+    sim_protocol(&omhmcast_prot);
 
     fclose(log_f);
     fclose(bid_f);

@@ -8,7 +8,7 @@
 
 #include "storage_cluster_sim.h"
 
-typedef struct chunkput_omhtcp {
+typedef struct chunkput_omhucast_t {
     chunkput_t  cp;
     unsigned ch_targets[MAX_REPLICAS]; // selected targets
     unsigned repnum;                    // # of replicas previously generated.

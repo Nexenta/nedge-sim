@@ -350,12 +350,12 @@ typedef struct chunkput_u {
 } chunkput_u_t;
 
 // Gateway event handlers - in gateway.c
-extern protocol_t replicast_sim;
-extern protocol_t repucast_sim;
-extern protocol_t repgroup_sim;
-extern protocol_t chtcp_sim;
-extern protocol_t omhtcp_sim;
-extern protocol_t omhudp_sim;
+extern protocol_t replicast_prot;
+extern protocol_t repucast_prot;
+extern protocol_t rg_prot;
+extern protocol_t chucast_prot;
+extern protocol_t omhucast_prot;
+extern protocol_t omhmcast_prot;
 extern void handle_replica_put_ack(const event_t *e);
 extern void handle_chunk_put_ack(const event_t *e);
 extern chunkput_t *next_cp (gateway_t *gateway,size_t size);
