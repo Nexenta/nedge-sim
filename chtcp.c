@@ -19,9 +19,14 @@ typedef struct chunkput_chucast {
 
 typedef enum chctp_event_type { // extends enum event_type
     CHUCAST_CHUNK_PUT_READY = TRANSPORT_EVENT_BASE,
-    CHUCAST_XMIT_RECEIVED,
-    CHUCAST_RECEPTION_COMPLETE,
-    CHUCAST_RECEPTION_ACK
+    CHUCAST_XMIT_RECEIVED,  // initiation of a new flow from a gateway to target
+    CHUCAST_XMIT_SLOW,  // a new flow has been enabled, slow all flows after RTT
+    CHUCAST_XMIT_SPEED, // a flow completed a RTT earlier
+                        // increase the rate for the remaining flows.
+    CHUCAST_RECEPTION_COMPLETE, // earlies estimate flow completion to target
+    CHUCAST_RECEPTION_ACK   // transport layer ack that chunk was sent
+                            // this proceeds the REPLICA_ACK which is not
+                            // sent until the Chunk has been written to disk.
 } chctp_event_type_t;
 
 typedef struct ongoing_reception {
@@ -29,10 +34,25 @@ typedef struct ongoing_reception {
     tllist_t    tllist; // time is time tcp reception started
     tick_t      credit;    // how many bits have been simulated
     tick_t      credited_thru;  // thru when?
+    tick_t      enabled;        // is this connection enabled to transmit at an
+                                // equal share of the target capacity
+                                // This is enabled after one round-trip
     chunk_put_handle_t cp;  // for which chunk?
     unsigned max_ongoing_rx;    // maximum n_ongoing_receptions for target
     // over lifespan of this reception.
 } ongoing_reception_t;
+
+typedef struct chucast_xmit_slow {
+    event_t event;          // chucast_xmit_slow is an event
+    unsigned target_num;    // Target with new flow
+    ongoing_reception_t *new_flow;
+    chunk_put_handle_t  cp; // Handle of the chunk put for new_flow
+} chucast_xmit_slow_t;
+
+typedef struct chucast_xmit_speed {
+     event_t event;          // chucast_xmit_slow is an event
+    unsigned target_num;    // Target with modified flow set
+} chucast_xmit_speed_t;
 
 typedef struct chucast_target {
     // Track a non-replicast target
@@ -236,11 +256,19 @@ static void credit_ongoing_receptions (chucast_target_t *t,
             elapsed_time = now - ort->credited_thru;
             ort->credited_thru = now;
         }
-        credit = elapsed_time / t->n_ongoing_receptions;
-        if (!credit) credit = 1;
-        ort->credit += credit;
-        if (current_num_receptions > ort->max_ongoing_rx)
-            ort->max_ongoing_rx = current_num_receptions;
+        if (!ort->enabled) {
+            // TODO if enough time?
+            ort->enabled = true;
+        }
+        else {
+            // TODO: when is t->n_ongoing_receptions acutally inc/decced?
+            // do we need t->n_enabled_receptions?
+            credit = elapsed_time / t->n_ongoing_receptions;
+            if (!credit) credit = 1;
+            ort->credit += credit;
+            if (current_num_receptions > ort->max_ongoing_rx)
+                ort->max_ongoing_rx = current_num_receptions;
+        }
     }
 }
 
@@ -279,20 +307,15 @@ static void handle_chucast_xmit_received (const event_t *e)
 // The steps
 //      Credit existing flows through the present.
 //      create the new flow
-//      if this was the first flow then schedule the tcp_reception_complete
-//      event, otherwise just allow the existing event to complete. This
-//      will be slightly early (because there are now n+1 flows instead of
-//      n flows, so when that event triggers only (n-1)/n of the payload
-//      would have been transferred. We'll just update the credits and
-//      re-issue the new tcp_reception_complete event
+//      create chucast_xmit_slow event after RTT to slow all existing
+//          connections to make room for the new one.
 
 {
     const tcp_xmit_received_t *txr = (const tcp_xmit_received_t *)e;
     ongoing_reception_t *ort = calloc(1,sizeof *ort);
+    chucast_xmit_slow_t cxs;
     tllist_t *tp;
     ongoing_reception_t *p;
-    tllist_t *insert_point;
-    
     chucast_target_t *t;
     
     assert (e);
@@ -318,11 +341,13 @@ static void handle_chucast_xmit_received (const event_t *e)
     ort->cp = txr->cp;
     ort->max_ongoing_rx = t->n_ongoing_receptions + 1;
     
-    insert_point = (tllist_t *)tllist_find(&t->orhead.tllist,ort->tllist.time);
-    tllist_insert(insert_point,&ort->tllist);
+    cxs.event.type = (event_type_t)CHUCAST_XMIT_SLOW;
+    cxs.event.tllist.time = now + 2*config.cluster_trip_time;
+    cxs.new_flow = ort;
+    cxs.target_num = txr->target_num;
+    cxs.cp = txr->cp;
     
-    if (++t->n_ongoing_receptions == 1)
-        schedule_tcp_reception_complete (txr->target_num,txr->cp);
+    insert_event(cxs);
 }
 
 static void log_chucast_xmit_received (FILE *f,const event_t *e)
@@ -335,6 +360,52 @@ static void log_chucast_xmit_received (FILE *f,const event_t *e)
                 e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
                 txr->target_num);
     }
+}
+
+static void handle_chucast_xmit_slow (const event_t *e)
+{
+    const chucast_xmit_slow_t *cxs = (const chucast_xmit_slow_t *)e;
+    ongoing_reception_t *ort;
+    chucast_target_t *t = (chucast_target_t *)chucast_target(cxs->target_num);
+    tllist_t *insert_point;
+ 
+    // credit ongoing_receptions
+    // insert cxs->new_flow in target's ongoing_reception list
+    // ++target->n_ongoing_receptions
+    
+    insert_point = (tllist_t *)tllist_find(&t->orhead.tllist,ort->tllist.time);
+    tllist_insert(insert_point,&ort->tllist);
+
+    if (++t->n_ongoing_receptions == 1)
+        schedule_tcp_reception_complete (cxs->target_num,cxs->cp);
+}
+
+static void log_chucast_xmit_slow (FILE *f,const event_t *e)
+{
+    const chucast_xmit_slow_t *cxs = (const chucast_xmit_slow_t *)e;
+    
+    if (!config.terse)
+        fprintf(f,"CHUCAST_XMIT_SLOW,cp,%lu,tgt,%d\n",cxs->cp,cxs->target_num);
+}
+
+static void handle_chucast_xmit_speed (const event_t *e)
+{
+    const chucast_xmit_speed_t *cxsp = (const chucast_xmit_speed_t *)e;
+    chucast_target_t *t = (chucast_target_t *)chucast_target(cxsp->target_num);
+    
+    
+    
+    // remove completed flow
+    if (--t->n_ongoing_receptions)
+        credit_ongoing_receptions(t,t->n_ongoing_receptions);
+}
+
+static void log_chucast_xmit_speed (FILE *f,const event_t *e)
+{
+    const chucast_xmit_speed_t *cxsp = (const chucast_xmit_speed_t *)e;
+    
+    (void)f;
+    (void)cxsp;
 }
 
 static void handle_chucast_reception_complete (const event_t *e)
@@ -464,6 +535,8 @@ protocol_t chucast_prot = {
     .h = {
         {handle_chucast_chunk_put_ready,log_chucast_chunk_put_ready},
         {handle_chucast_xmit_received,log_chucast_xmit_received},
+        {handle_chucast_xmit_slow,log_chucast_xmit_slow},
+        {handle_chucast_xmit_speed,log_chucast_xmit_speed},
         {handle_chucast_reception_complete,log_chucast_reception_complete},
         {handle_chucast_reception_ack,log_chucast_reception_ack}
     }
