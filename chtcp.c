@@ -393,9 +393,6 @@ static void handle_chucast_xmit_speed (const event_t *e)
     const chucast_xmit_speed_t *cxsp = (const chucast_xmit_speed_t *)e;
     chucast_target_t *t = (chucast_target_t *)chucast_target(cxsp->target_num);
     
-    
-    
-    // remove completed flow
     if (--t->n_ongoing_receptions)
         credit_ongoing_receptions(t,t->n_ongoing_receptions);
 }
@@ -404,8 +401,8 @@ static void log_chucast_xmit_speed (FILE *f,const event_t *e)
 {
     const chucast_xmit_speed_t *cxsp = (const chucast_xmit_speed_t *)e;
     
-    (void)f;
-    (void)cxsp;
+    if (!config.terse)
+        fprintf(f,"CHUCST_XMIT_SPEED,tgt,%d\n",cxsp->target_num);
 }
 
 static void handle_chucast_reception_complete (const event_t *e)
@@ -421,6 +418,7 @@ static void handle_chucast_reception_complete (const event_t *e)
 
 {
     const tcp_reception_complete_t *trc = (const tcp_reception_complete_t *)e;
+    chucast_xmit_speed_t cxsp;
     tcp_reception_ack_t tcp_ack;
     ongoing_reception_t *ort,*ort_next;
     disk_write_start_t dws;
@@ -428,7 +426,7 @@ static void handle_chucast_reception_complete (const event_t *e)
     tick_t write_start,write_completion;
     unsigned n;
     tick_t write_variance =
-    derived.chunk_disk_write_duration/config.write_variance;
+        derived.chunk_disk_write_duration/config.write_variance;
     tick_t write_duration = derived.chunk_disk_write_duration
                         - write_variance/2
                         +  (rand() % write_variance);
@@ -479,7 +477,11 @@ static void handle_chucast_reception_complete (const event_t *e)
         tllist_remove(&ort->tllist);
         memset(ort,0xFD,sizeof *ort);
         free(ort);
-        --t->n_ongoing_receptions;
+        
+        cxsp.event.type = (event_type_t)CHUCAST_XMIT_SPEED;
+        cxsp.target_num = trc->target_num;
+        cxsp.event.tllist.time = now + 2*config.cluster_trip_time;
+        insert_event(cxsp); // causes eventual -- t->n_ongoing_receptions
     }
 }
 
