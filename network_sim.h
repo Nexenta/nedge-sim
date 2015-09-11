@@ -16,41 +16,30 @@
 #ifndef CongestionSim_network_sim_h
 #define CongestionSim_network_sim_h
 
-typedef enum queue_type {
-    CONGESTION_CONTROL,
-    OUTPUT_UNSOLICITED,
-    OUTPUT_SOLICITED,
-    CORE,
-    INPUT_UNSOLICITED,
-    INPUT_SOLICITED,
-    PROCESS
-} queue_type_t;
 
 typedef struct node node_t;
 
 typedef struct placed_packet placed_packet_t;
 
-typedef struct queue_class {
-    queue_type_t class_type;
-    void (*process)(node_t *,placed_packet_t *);
-} queue_class_t;
-
-extern queue_class_t congestion_control_class;
-extern queue_class_t output_unsolicited_class;
-extern queue_class_t output_solicited_class;
-extern queue_class_t core_class;
-extern queue_class_t input_unsolicited_class;
-extern queue_class_t input_solicited_class;
-extern queue_class_t process_class;
 
 typedef struct queue {
-    const node_t  *node;    // is owned by
-    const queue_class_t *class;
-    unsigned qdepth;
-    // queue depth
-    // queue depth delta
-    tllist_t    packet_queue_head;  // of packet_placement_t
+    const node_t    *node;    // is owned by
+    bool            is_input;
+    tllist_t        packet_queue_head;  // of packet_placement_t
 } queue_t;
+
+typedef struct input_queue {
+    queue_t queue;  // output_queue is a queue
+    size_t  packet_depth;
+    size_t  byte_depth;
+    // queue depth delta
+} input_queue_t;
+
+typedef struct output_queue {
+    queue_t queue;  // input_queue is a queue
+    bool    xmitting_now;
+    tick_t xmit_done_at;    // if xmitting_now, when will xmit be done?
+} output_queue_t;
 
 #define MAX_DESTINATIONS 12
 typedef struct destination {
@@ -61,20 +50,25 @@ typedef struct destination {
 typedef enum storage_message_type {
     PUT_REQUEST,
     PUT_RESPONSE,
+    PUT_ACCEPT,
+    PUT_TRANSFER,
     PUT_ACK
 } storage_messge_type_t;
 
 typedef unsigned message_type_t; // union of all '*_message_type_t's
 
 typedef struct config {
+    size_t  n_nodes;
     size_t  per_packet_overhead;
     tick_t  congestion_xmit_window;
+    tick_t  cluster_trip_time;
+    bool    dual_network_traffic_class;
 } config_t;
 
 extern config_t config;
 
 typedef struct message {
-    unsigned        source;
+    node_t          *source;
     unsigned        transaction_num;
     message_type_t  message_type;
     bool            solicited;
@@ -88,58 +82,50 @@ typedef struct message {
     //  All pacing is done *before* the first packet of a command
     //  unsolicited message is sent.
     
-    
     destination_t   dest;
     tick_t          initiated_at;
     tick_t          completed_at;
+    unsigned        ref_count;  // inc for each packet created reffing this.
+                                // dec when packet is consumed
+                                // release message when this reaches zero.
 } message_t;
 
 typedef struct packet {
-    const message_t *message;
-    unsigned packet_num;
-    size_t packet_size;
+    const message_t *message; // exception: ref_count altered via cast override
+    unsigned        packet_num;
+    size_t          packet_size;
+    bool            last_packet;
+    unsigned        ref_count;  // inc for each packet placement
+                                // dec when packet_placement is released
+                                // release packet when this reaches zero.
 } packet_t;
 
 struct placed_packet {
     // linked list entry noting entry and exit
     // of a packet from a queue
-    //
-    // Each placed packet has 4 relevant times:
-    //      when it begins enqueuing here (tllist.time)
-    //      when it is ready for processing here (finish_arrival)
-    //      when it can be sent to the next step (start_xmit)
-    //      when transmission/orocessing is done (end_xmit)
-    //          transmission rate is infinite intra-system, 10 Gb/sec on wire
-    //
     tllist_t tllist;
     tick_t  finsih_arrival;
-    tick_t  start_xmit;
-    tick_t  end_xmit;
-    const packet_t *packet;
+    const packet_t *packet; // exception: ref_count altered via cast override
 };
 
 struct node {
     // congestion control tracking data
-    queue_t congestion_control_delay_filter;
-    queue_t output_unsolicited;
-    queue_t output_solicited;
-    queue_t core;
-    queue_t input_unsolicited;
-    queue_t input_solicited;
-    queue_t process;
+    output_queue_t output;
+    input_queue_t input;
 };
-
-typedef void (*process_msg_t)(node_t *node,message_t *msg);
-    // invoked in each destination node when message is ready to process
-
-extern process_msg_t process_msg_plugin;
-    // application layer must set this plug-in.
 
 extern node_t *nodes;   // indexed by unsigned node number
 
-extern void enqueue_packet (tick_t when, const packet_t *,queue_t *);
+extern void enqueue_packet (tick_t when,
+                            bool prioritized,
+                            const packet_t *,
+                            output_queue_t *);
 
-extern void simulate_msg_send (node_t *node,message_t *msg);
+extern void destination_enqueue (const packet_t *,input_queue_t *);
+
+extern void simulate_msg_send (node_t *from_node,message_t *msg);
+
+extern void process (const node_t *node,const packet_t *pkt);
 
 // When a placed_packet reaches the head of a queue:
 //      if next step is another a congestion_point (or are congestion points)
@@ -184,10 +170,55 @@ extern void simulate_msg_send (node_t *node,message_t *msg);
 //      Chunk Put Ack is sent from destination back to source
 //          which may select next desintation (and repeat) or complete.
 
+typedef enum event_type {
+    INITIATE_PUT,       // initiate a new chunk put transaction on this node
+    CONGESTION_DING,    // excess queue depth detected and fedback with
+                        // configurable delay
+    MSG_XFER_START,     // Start of the transfer of a message from a queue
+                        // to a queue, with the 'from' queue being optional.
+                        // When the destination is the 'process' queue this
+                        // will result in appication processing of the msg.
+                        //
+                        // Buffer usage must be incremented for the destination
+                        // queue at this point.
+    MSG_XFER_DONE,      // completion of a transfer.
+                        // at the source the buffer claims can be reduced.
+                        // at the destination the packet can be scheduled
+                        // for transmission if it is at the head of the queue
+                        // if not at the head of the queue it's order in the
+                        // queue can be fixed.
+} event_type_t;
+
 typedef struct event {
     tllist_t    tllist; // list of event_ts
-    queue_t *q;  // which queue has something at its head now?
+    event_type_t event_type;
 } event_t;
+
+typedef struct initiate_event { // for initiate_put
+    event_t event;  // a generation_event is an event
+    node_t  *node;  // which node should the new Chunk Put originate on?
+} initiate_event_t;
+
+typedef struct ding_event { // for congestion ding
+    node_t  *dinger;    // destination that was congested.
+    // TBD: is there a severity of the ding?
+} ding_event_t;
+
+typedef struct msg_xfer_start_event { // for msg_xfer_start
+    event_t event;  // a msg_xfer_start_event is an event
+    packet_t *pkt;
+    node_t  *from_node; // from from_node->output_q
+    node_t  *to_node;   // to to_node->input_q
+} msg_xfer_start_event_t;
+
+typedef struct msg_xfer_done_event { // for msg_xfer_done
+    event_t event;  // a msg_xfer_done_event is an event
+    packet_t *pkt;
+    node_t  *from_node; // from from_node->output_q
+    node_t  *to_node;   // to to_node->input_q
+} msg_xfer_done_event_t;
+
+
 
 
 
