@@ -365,14 +365,11 @@ static void log_chucast_xmit_received (FILE *f,const event_t *e)
 static void handle_chucast_xmit_slow (const event_t *e)
 {
     const chucast_xmit_slow_t *cxs = (const chucast_xmit_slow_t *)e;
-    ongoing_reception_t *ort;
+    ongoing_reception_t *ort = cxs->new_flow;
     chucast_target_t *t = (chucast_target_t *)chucast_target(cxs->target_num);
     tllist_t *insert_point;
  
-    // credit ongoing_receptions
-    // insert cxs->new_flow in target's ongoing_reception list
-    // ++target->n_ongoing_receptions
-    
+    credit_ongoing_receptions(t,t->n_ongoing_receptions);    
     insert_point = (tllist_t *)tllist_find(&t->orhead.tllist,ort->tllist.time);
     tllist_insert(insert_point,&ort->tllist);
 
