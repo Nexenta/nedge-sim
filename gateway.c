@@ -250,8 +250,9 @@ void report_duration_stats (void)
         avg_ticks = (float)track.total_duration/(float)track.n_completions;
         min_x = (float)track.min_duration/avg_ticks;
         max_x = ((float)track.max_duration)/avg_ticks;
-        printf("# Pacing Delays: %d, %3.2f msecs\n",track.n_pace_delays,
-               track.aggregate_pace_delay/ticks_per_ms);
+	if (track.aggregate_pace_delay > 0)
+		printf("Pacing Delays: %d, %3.2f msecs\n",track.n_pace_delays,
+		       track.aggregate_pace_delay/ticks_per_ms);
         printf("Chunk write latency (ms): min %3.2f (%.2f * avg) average %.3f ",
                ((float)track.min_duration)/ticks_per_ms,min_x,
                avg_ticks/ticks_per_ms);

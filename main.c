@@ -446,8 +446,7 @@ static void simulate (const protocol_t *sp)
         event_remove((event_t *)e);
         e = (const event_t *)ehead.tllist.next;
     }
-    printf("Post-drain:");
-    report_duration_stats();
+
     free(track.durations);
     memset(&track,0,sizeof(trackers_t));
     memset(&track_prev,0,sizeof(trackers_t));
