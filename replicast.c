@@ -116,12 +116,11 @@ static unsigned unsolicited_rate (unsigned ng)
 {
     ng_t *n = ngs + ng;
     tick_t *p;
-    tick_t total;
     unsigned n_counted;
     
     assert(ng < config.n_negotiating_groups);
     assert(ngs);
-    for (p = n->next,total = 0L,n_counted = 0;;++n_counted) {
+    for (p = n->next,n_counted = 0;;++n_counted) {
         --p;
         if (p == n->ring - 1)
             p = n->ring + (TRACK_PER_NG-1);
