@@ -405,6 +405,25 @@ static void log_rep_chunk_put_response_received (FILE *f,const event_t *e)
     }
 }
 
+static target_t *rep_target (unsigned target_num)
+{
+    return &repu[target_num].common;
+}
+
+static unsigned n_active_for_ng (unsigned ng)
+{
+    unsigned tgt;
+    unsigned n_active = 0;
+    const rep_target_t *t;
+    
+    for_ng(tgt,ng) {
+        t = (const rep_target_t *)rep_target(tgt);
+        if (t->ir_queue_depth > 0)
+            ++n_active;
+    }
+    return n_active;
+}
+
 #define UNSOLICITED_BUDGET_BITS (TICKS_PER_SECOND/10/10000)
 // 1 Gbs budget for 1/10,000 th of a second
 
@@ -414,11 +433,12 @@ static void log_rep_chunk_put_response_received (FILE *f,const event_t *e)
 static tick_t congestion_delay (unsigned ng)
 {
     unsigned n_unsolicited = unsolicited_rate(ng);
-    unsigned n_active = 1; // n_active_targets(ng);
+    unsigned n_active = n_active_for_ng(ng);
     signed congestion = n_unsolicited - (signed)UNSOLICITED_BUDGET_PKTS;
     tick_t delay;
     
-    fprintf(log_f,"n_unsolicited,%d,ng,%d\n",n_unsolicited,ng);
+    fprintf(log_f,"n_unsolicited,%d,#active,%d,ng,%d\n",n_unsolicited,
+            n_active,ng);
     delay = (congestion <= 0)
         ? 0L
         : config.congestion_penalty*n_active*congestion;
@@ -475,11 +495,6 @@ static void log_rep_chunk_put_ready (FILE *f,const event_t *e)
         gateway = chunk_gateway(cpr->cp);
         fprintf(f,",Gateway,%d,chunks,%d\n",gateway->num,gateway->n_chunks);
     }
-}
-
-static target_t *rep_target (unsigned target_num)
-{
-    return &repu[target_num].common;
 }
 
 static void init_rep_targets(unsigned n_targets)
