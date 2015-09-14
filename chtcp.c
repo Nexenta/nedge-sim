@@ -8,7 +8,6 @@
 
 #include "storage_cluster_sim.h"
 
-
 typedef struct chunkput_chucast {
     chunkput_t  cp;
     unsigned ch_targets[MAX_REPLICAS]; // selected targets
@@ -144,7 +143,8 @@ static void log_chucast_chunk_put_ready (FILE *f,const event_t *e)
     fprintf(f,"chucast,CHUNK_PUT_READY\n");
 }
 
-static void remove_tcp_reception_target (chunkput_chucast_t *cp,unsigned target_num)
+static void remove_tcp_reception_target (chunkput_chucast_t *cp,
+                                         unsigned target_num)
 
 // this is a sanity checking diagnostic.
 // It does notcontribute to the final results.
@@ -215,7 +215,8 @@ void init_chucast_targets(unsigned n_targets)
     
     assert(!chucast_tgt);
     
-    chucast_tgt = (chucast_target_t *)calloc(n_targets,sizeof(chucast_target_t));
+    chucast_tgt =
+        (chucast_target_t *)calloc(n_targets,sizeof(chucast_target_t));
     
     assert(chucast_tgt);
     for (n = 0;n != n_targets;++n) {
@@ -238,17 +239,18 @@ static void credit_ongoing_receptions (chucast_target_t *t,
     tllist_t *pnd;
     ongoing_reception_t *ort;
     tick_t  elapsed_time,credit;
+    unsigned n;
     
     assert (t);
     assert (t == &chucast_tgt[t-chucast_tgt]);
     
-    for (pnd = t->orhead.tllist.next;
+    for (pnd = t->orhead.tllist.next,n=1;
          pnd != &t->orhead.tllist;
-         pnd = pnd->next)
+         pnd = pnd->next,++n)
     {
         ort = (ongoing_reception_t *)pnd;
         
-        assert(t->n_ongoing_receptions > 0);
+        assert(current_num_receptions);
         
         if (now < ort->credited_thru)
             elapsed_time = 0L;
@@ -259,13 +261,16 @@ static void credit_ongoing_receptions (chucast_target_t *t,
         if (!ort->enabled) {
             // TODO if enough time?
             ort->enabled = true;
+            fprintf(log_f,"NoCredit,ort,%p,cp,%d\n",ort,chunk_seq(ort->cp));
         }
         else {
-            // TODO: when is t->n_ongoing_receptions acutally inc/decced?
-            // do we need t->n_enabled_receptions?
-            credit = elapsed_time / t->n_ongoing_receptions;
+            credit = elapsed_time / current_num_receptions;
             if (!credit) credit = 1;
             ort->credit += credit;
+            fprintf(log_f,"Credit,%lu,target,%p,ort,%p",credit,t,ort);
+            fprintf(log_f,",n,%d,ongoing,%d",n,t->n_ongoing_receptions);
+            fprintf(log_f,",cp,%d",chunk_seq(ort->cp));
+            fprintf(log_f,",elapsed_time,%lu\n",elapsed_time);
             if (current_num_receptions > ort->max_ongoing_rx)
                 ort->max_ongoing_rx = current_num_receptions;
         }
@@ -323,12 +328,20 @@ static void handle_chucast_xmit_received (const event_t *e)
     t = chucast_tgt + txr->target_num;
     ++t->chunks_put;
     
-    fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
-            e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
-    if (t->n_ongoing_receptions) {
+    if (!t->n_ongoing_receptions) {
+        fprintf(log_f,
+                "@0x%lx First Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d\n",
+                e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
+    }
+    else {
         credit_ongoing_receptions(t,t->n_ongoing_receptions+1);
+        fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
+                e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
         fprintf(log_f,",Prior CPs");
-        for (tp = t->orhead.tllist.next; tp != &t->orhead.tllist; tp = tp->next) {
+        for (tp = t->orhead.tllist.next;
+             tp != &t->orhead.tllist;
+             tp = tp->next)
+        {
             p = (ongoing_reception_t *)tp;
             fprintf(log_f,",0x%lx,%d",p->cp,chunk_seq(p->cp));
         }
@@ -380,9 +393,11 @@ static void handle_chucast_xmit_slow (const event_t *e)
 static void log_chucast_xmit_slow (FILE *f,const event_t *e)
 {
     const chucast_xmit_slow_t *cxs = (const chucast_xmit_slow_t *)e;
+    chucast_target_t *t = (chucast_target_t *)chucast_target(cxs->target_num);
     
     if (!config.terse)
-        fprintf(f,"CHUCAST_XMIT_SLOW,cp,%lu,tgt,%d\n",cxs->cp,cxs->target_num);
+        fprintf(f,"CHUCAST_XMIT_SLOW,cp,%lu,tgt,%d,#ongoing,%d\n",cxs->cp,
+                cxs->target_num,t->n_ongoing_receptions);
 }
 
 static void handle_chucast_xmit_speed (const event_t *e)
@@ -397,9 +412,10 @@ static void handle_chucast_xmit_speed (const event_t *e)
 static void log_chucast_xmit_speed (FILE *f,const event_t *e)
 {
     const chucast_xmit_speed_t *cxsp = (const chucast_xmit_speed_t *)e;
-    
+    chucast_target_t *t = (chucast_target_t *)chucast_target(cxsp->target_num);
     if (!config.terse)
-        fprintf(f,"CHUCST_XMIT_SPEED,tgt,%d\n",cxsp->target_num);
+        fprintf(f,"CHUCST_XMIT_SPEED,tgt,%d,#ongoing,%d\n",cxsp->target_num,
+                t->n_ongoing_receptions);
 }
 
 static void handle_chucast_reception_complete (const event_t *e)
@@ -478,6 +494,7 @@ static void handle_chucast_reception_complete (const event_t *e)
         cxsp.event.type = (event_type_t)CHUCAST_XMIT_SPEED;
         cxsp.target_num = trc->target_num;
         cxsp.event.tllist.time = now + 2*config.cluster_trip_time;
+        cxsp.event.create_time = e->tllist.time;
         insert_event(cxsp); // causes eventual -- t->n_ongoing_receptions
     }
 }
