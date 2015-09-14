@@ -87,6 +87,52 @@ static rep_target_t *repu = NULL;
 //
 // The for body must follow this macro
 //
+
+#define TRACK_PER_NG 1000
+typedef struct ng {
+    tick_t *next;
+    tick_t ring[TRACK_PER_NG];
+} ng_t;
+
+static ng_t *ngs = NULL;
+
+static void track_ng_unsolicited (unsigned ng)
+{
+    ng_t *n = ngs + ng;
+
+    assert(ng < config.n_negotiating_groups);
+    assert(ngs);
+    
+    *n->next = now;
+    if (++n->next == n->ring + TRACK_PER_NG)
+        n->next = n->ring;
+}
+
+// TODO: this should eventually be moved to a location common for all
+// protocols using negotiating groups
+
+#define RATE_THRESHOLD 1000000
+static unsigned unsolicited_rate (unsigned ng)
+{
+    ng_t *n = ngs + ng;
+    tick_t *p;
+    tick_t total;
+    unsigned n_counted;
+    
+    assert(ng < config.n_negotiating_groups);
+    assert(ngs);
+    for (p = n->next,total = 0L,n_counted = 0;;++n_counted) {
+        --p;
+        if (p == n->ring - 1)
+            p = n->ring + (TRACK_PER_NG-1);
+
+        if (*p == ~0L) break;
+        if (now - *p > RATE_THRESHOLD) break;
+        if (p == n->next) break;
+    }
+    return n_counted;
+}
+
 static void save_bid (bid_t *bids,
                       unsigned *nbids,
                       const rep_chunk_put_response_received_t *cprr)
@@ -298,8 +344,8 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
     save_bid (cp->bids,&cp->nbids,cprr);
     if (--cp->responses_uncollected) return;
     
-    accept_event.event.create_time = e->tllist.time;
-    accept_event.event.tllist.time = e->tllist.time + config.cluster_trip_time;
+    accept_event.event.create_time = now;
+    accept_event.event.tllist.time = now + config.cluster_trip_time;
     accept_event.event.type = (event_type_t)REP_CHUNK_PUT_ACCEPT_RECEIVED;
     accept_event.cp = cprr->cp;
     
@@ -311,7 +357,6 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
                               &accept_event.window_start,
                               &accept_event.window_lim);
     
-    accept_event.event.create_time = now+1;
     rendezvous_xfer_event.event.create_time = now+1;
     rendezvous_xfer_event.event.tllist.time = accept_event.window_lim;
     assert(accept_event.window_start < accept_event.window_lim);
@@ -334,6 +379,7 @@ static void handle_rep_chunk_put_response_received (const event_t *e)
             insert_event(rendezvous_xfer_event);
         }
     }
+    track_ng_unsolicited(cp->cp.ng);
     //
     // schedule the next put request to start slightly before this rendezvous
     // transfer will complete
@@ -359,6 +405,26 @@ static void log_rep_chunk_put_response_received (FILE *f,const event_t *e)
     }
 }
 
+#define UNSOLICITED_BUDGET_BITS (TICKS_PER_SECOND/10/10000)
+// 1 Gbs budget for 1/10,000 th of a second
+
+#define UNSOLICITED_BUDGET_PKTS (UNSOLICITED_BUDGET_BITS/8000)
+// assume 1000 byte unsolicited packets
+
+static tick_t congestion_delay (unsigned ng)
+{
+    unsigned n_unsolicited = unsolicited_rate(ng);
+    unsigned n_active = 1; // n_active_targets(ng);
+    signed congestion = n_unsolicited - (signed)UNSOLICITED_BUDGET_PKTS;
+    tick_t delay;
+    
+    fprintf(log_f,"n_unsolicited,%d,ng,%d\n",n_unsolicited,ng);
+    delay = (congestion <= 0) ? 0L : 10000*n_active*congestion;
+    if (delay)
+        fprintf(log_f,"Delay,%lu,ng,%d\n",delay,ng);
+    return delay;
+}
+
 #define MINIMUM_UDPV6_BYTES 66
 #define CHUNK_PUT_REQUEST_BYTES (MINIMUM_UDPV6_BYTES+200)
 
@@ -371,12 +437,17 @@ static void handle_rep_chunk_put_ready (const event_t *e)
     assert (cp);
     assert(!cp->cp.mbz);
     
-    cprr.event.create_time = e->tllist.time;
-    cprr.event.tllist.time   = e->tllist.time +
+    cprr.event.create_time = now;
+    cprr.event.tllist.time   = now +
         config.cluster_trip_time + CHUNK_PUT_REQUEST_BYTES*8;
     cprr.event.type = (event_type_t)REP_CHUNK_PUT_REQUEST_RECEIVED;
     cprr.cp = (chunk_put_handle_t)cp;
     cp->responses_uncollected = config.n_targets_per_ng;
+    
+    cprr.event.tllist.time += congestion_delay (cp->cp.ng);
+    
+    // if negotiating group is congested then delay this chunk_put_request
+    
     
     /* for each Target in randomly selected negotiating group.
      * the Targets are assigned round-robin to Negotiating Groups.
@@ -387,6 +458,7 @@ static void handle_rep_chunk_put_ready (const event_t *e)
     cp->cp.ng = rand() % config.n_negotiating_groups;
     for_ng(cprr.target_num,cp->cp.ng)
         insert_event(cprr);
+    track_ng_unsolicited(cp->cp.ng);
 }
 
 static void log_rep_chunk_put_ready (FILE *f,const event_t *e)
@@ -416,19 +488,27 @@ static void init_rep_targets(unsigned n_targets)
 //
 {
     unsigned n;
+    ng_t *ng;
     
     repu = (rep_target_t *)calloc(n_targets,sizeof(rep_target_t));
     assert(repu);
     
     for (n=0;n != n_targets;++n)
         repu[n].ir_head.tllist.next = repu[n].ir_head.tllist.prev =
-        &repu[n].ir_head.tllist;
+            &repu[n].ir_head.tllist;
+    ngs = (ng_t *)calloc(config.n_negotiating_groups,(sizeof *ngs));
+    for (ng = ngs; ng != ngs + config.n_negotiating_groups;++ng) {
+        ng->next = ng->ring;
+        memset(ng->ring,0xFF,(sizeof ng->ring));
+    }
 }
 
 static void release_rep_targets (void)
 {
     free(repu);
     repu = (rep_target_t *)0;
+    free(ngs);
+    ngs = (ng_t *)0;
 }
 
 static void make_bid (unsigned target_num,
