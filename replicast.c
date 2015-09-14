@@ -419,7 +419,9 @@ static tick_t congestion_delay (unsigned ng)
     tick_t delay;
     
     fprintf(log_f,"n_unsolicited,%d,ng,%d\n",n_unsolicited,ng);
-    delay = (congestion <= 0) ? 0L : 10000*n_active*congestion;
+    delay = (congestion <= 0)
+        ? 0L
+        : config.congestion_penalty*n_active*congestion;
     if (delay)
         fprintf(log_f,"Delay,%lu,ng,%d\n",delay,ng);
     return delay;

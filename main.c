@@ -57,6 +57,7 @@ sim_config_t config = {
     .bid_window_multiplier_pct = BID_WINDOW_MULTIPLIER_PCT,
     .write_variance = 50,
     .sample_interval = SAMPLE_INTERVAL,
+    .congestion_penalty = 10000,
     .seed = 0x12345678,
 };
 
@@ -351,7 +352,7 @@ static void process_event (const protocol_t *sp,const event_t *e)
         if (now < config.sim_duration) {
             track_it.event.create_time = e->tllist.time;
             track_it.event.tllist.time = e->tllist.time +
-            config.sample_interval;
+                config.sample_interval;
             track_it.event.type = TRACK_SAMPLE;
             insert_event(track_it);
         }
@@ -426,7 +427,7 @@ static void simulate (const protocol_t *sp)
         tenths_done = (unsigned)(now*10L/config.sim_duration);
         if (tenths_done != prior_tenths_done) {
             printf("-----%d0", tenths_done);
-	    fflush(stdout);
+            fflush(stdout);
             prior_tenths_done = tenths_done;
         }
         if (log_f) log_event(log_f,sp,e);
@@ -510,7 +511,7 @@ static FILE *open_outf (const char *type)
 
 static void usage (const char *progname) {
     fprintf(stderr,"Usage: %s",progname);
-    fprintf(stderr," [rep] [ch] [oh]");
+    fprintf(stderr," [rep] [chucast] [omhucast]");
     fprintf(stderr," [numrep <#>");
     fprintf(stderr," [duration <msecs>]");
     fprintf(stderr," [ngs <#>]");
@@ -523,15 +524,12 @@ static void usage (const char *progname) {
     fprintf(stderr," [sample <uSecs>");
     fprintf(stderr," [terse]");
     fprintf(stderr," penalty <ticks_per_chunk>");
+    fprintf(stderr," congestion_penalty <ticks>");
     fprintf(stderr," [cluster_trip_time <ticks>");
     fprintf(stderr,"\nOr %s help\n",progname);
     fprintf(stderr,"    to print this.\n");
     fprintf(stderr,"\nPenalty is assessed per chunk for Replicast overhead.\n");
     fprintf(stderr,"bwn is bid window multiplier\n");
-    fprintf(stderr,"\nrep does replicast.\n");
-    fprintf(stderr,"ch does consistent hash.\n");
-    fprintf(stderr,"oh does omniscient hash.\n");
-    fprintf(stderr,"Default is to do all\n");
 }
 
 static void log_config (FILE *f)
@@ -621,6 +619,8 @@ static void customize_config (int argc, const char ** argv)
                 atoi(argv[1])*(TICKS_PER_SECOND/(1000*1000));
         else if (0 == strcmp(*argv,"penalty"))
             config.replicast_packet_processing_penalty = atoi(argv[1]);
+        else if (0 == strcmp(*argv,"congestion_penalty"))
+            config.congestion_penalty = atoi(argv[1]);
         else if (0 == strcmp(*argv,"terse")) {
             config.terse = true;
             --argv,++argc;

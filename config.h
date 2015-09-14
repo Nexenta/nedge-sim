@@ -40,6 +40,9 @@ typedef struct sim_config {
                                     // width
     unsigned sample_interval;       // take a TRACK_SAMPLE every <this many>
                                     // useconds
+    tick_t  congestion_penalty;     // scaling factor for slowdown of initiation
+                                    // of chunkputs for congestion controlled
+                                    // protocols
     bool terse;                     // if true, omit many events from log_f
 } sim_config_t;
 
