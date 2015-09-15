@@ -51,7 +51,7 @@ typedef struct chucast_xmit_speed {
 } chucast_xmit_speed_t;
 
 typedef struct chucast_target {
-    // Track a non-replicast target
+    // Track a chucast target
     target_t    common; // common tracking fields
     unsigned n_ongoing_receptions;  // # of ongoing TCP receptions
     ongoing_reception_t orhead;     // tllist head of ongoing TCP receptions
@@ -71,7 +71,7 @@ static chucast_target_t *chucast_tgt = NULL;
 static void select_chucast_targets (chunkput_chucast_t *c)
 
 // select config.n_replicas different targets
-// store them in c->u.nonrep.ch_targets[0..n_repicas-1]
+// store them in ->ch_targets[0..n_repicas-1]
 //
 // for each pick select at random
 //      if previously selected try next target
@@ -196,7 +196,7 @@ static void log_chucast_reception_ack (FILE *f,const event_t *e)
     const tcp_reception_ack_t *tra = (const tcp_reception_ack_t *)e;
     
     assert(e);
-    fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_ACK,0x%lx,%d,tgt,%d\n",
+    fprintf(f,"0x%lx,0x%lx,chucast,TCP_RECEPTION_ACK,0x%lx,%d,tgt,%d\n",
             e->tllist.time,e->create_time,tra->cp,chunk_seq(tra->cp),
             tra->target_num);
 }
@@ -256,8 +256,9 @@ static void credit_ongoing_receptions (chucast_target_t *t,
         credit = elapsed_time / current_num_receptions;
         if (!credit) credit = 1;
         ort->credit += credit;
-        fprintf(log_f,"Credit,%lu,thru,%lu,target,%p,ort,%p",credit,
-                ort->credited_thru,t,ort);
+        fprintf(log_f,"Credit,%lu,total,%lu,of,%lu,thru,%lu,target,%ld,ort,%p",
+                credit,ort->credit,derived.chunk_tcp_xmit_duration,
+                ort->credited_thru,t-chucast_tgt,ort);
         fprintf(log_f,",n,%d,ongoing,%d",n,current_num_receptions);
         fprintf(log_f,",cp,%d",chunk_seq(ort->cp));
         fprintf(log_f,",elapsed_time,%lu\n",elapsed_time);
@@ -276,6 +277,7 @@ static void schedule_tcp_reception_complete (unsigned target_num,
     tick_t remaining_xfer;
     
     assert(t);
+    
     ort = (ongoing_reception_t *)t->orhead.tllist.next;
     assert(ort  &&  &ort->tllist != &t->orhead.tllist);
     
@@ -311,6 +313,7 @@ static void handle_chucast_xmit_received (const event_t *e)
     tllist_t *tp;
     ongoing_reception_t *p;
     chucast_target_t *t;
+    unsigned n;
     
     assert (e);
     
@@ -319,22 +322,22 @@ static void handle_chucast_xmit_received (const event_t *e)
     
     if (!t->n_ongoing_receptions) {
         fprintf(log_f,
-                "@0x%lx First Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d\n",
+                "@0x%lx,FirstOngoingReception,ox%p,target,%d,CP.0x%lx,%d\n",
                 e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
     }
     else {
         credit_ongoing_receptions(t,t->n_ongoing_receptions);
-        fprintf(log_f,"@0x%lx Ongoing Reception,ox%p,target,%d,CP.0x%lx,%d",
+        fprintf(log_f,"@0x%lx,OngoingReception,ox%p,target,%d,CP.0x%lx,%d",
                 e->tllist.time,ort,txr->target_num,txr->cp,chunk_seq(txr->cp));
-        fprintf(log_f,",Prior CPs");
-        for (tp = t->orhead.tllist.next;
+        fprintf(log_f,",%d,Prior CPs",t->n_ongoing_receptions);
+        for (tp = t->orhead.tllist.next,n=0;
              tp != &t->orhead.tllist;
-             tp = tp->next)
+             tp = tp->next,++n)
         {
             p = (ongoing_reception_t *)tp;
             fprintf(log_f,",0x%lx,%d",p->cp,chunk_seq(p->cp));
         }
-        fprintf(log_f,"\n");
+        fprintf(log_f,"(%d)\n",n);
     }
     assert(ort);
     ort->tllist.time = now;
@@ -358,7 +361,7 @@ static void log_chucast_xmit_received (FILE *f,const event_t *e)
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
+        fprintf(f,"0x%lx,0x%lx,chucast,TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
                 e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
                 txr->target_num);
     }
@@ -404,7 +407,7 @@ static void log_chucast_xmit_speed (FILE *f,const event_t *e)
     const chucast_xmit_speed_t *cxsp = (const chucast_xmit_speed_t *)e;
     chucast_target_t *t = (chucast_target_t *)chucast_target(cxsp->target_num);
     if (!config.terse)
-        fprintf(f,"CHUCST_XMIT_SPEED,tgt,%d,#ongoing,%d\n",cxsp->target_num,
+        fprintf(f,"CHUCAST_XMIT_SPEED,tgt,%d,#ongoing,%d\n",cxsp->target_num,
                 t->n_ongoing_receptions);
 }
 
@@ -429,6 +432,7 @@ static void handle_chucast_reception_complete (const event_t *e)
     tick_t write_start,write_completion;
     bool scheduled;
     unsigned n;
+    unsigned n_completed = 0;
     tick_t write_variance =
         derived.chunk_disk_write_duration/config.write_variance;
     tick_t write_duration = derived.chunk_disk_write_duration
@@ -453,7 +457,10 @@ static void handle_chucast_reception_complete (const event_t *e)
         assert(&ort_next->tllist==&t->orhead.tllist || ort_next->cp!=ort->cp);
         
         if (ort->credit < derived.chunk_tcp_xmit_duration) {
-            if (!scheduled) {
+            if (scheduled)
+                fprintf(log_f,"AlreadyScheduled,tgt,%d,ort,%p\n",
+                        trc->target_num,ort);
+            else {
                 schedule_tcp_reception_complete (trc->target_num,ort->cp);
                 scheduled = true;
             }
@@ -491,6 +498,10 @@ static void handle_chucast_reception_complete (const event_t *e)
             cxsp.event.tllist.time = now + 2*config.cluster_trip_time;
             cxsp.event.create_time = e->tllist.time;
             insert_event(cxsp); // causes eventual -- t->n_ongoing_receptions
+            ++n_completed;
+            if (n_completed > 1)
+                fprintf(log_f,"tgt,%u,n_completed,%u\n",
+                        trc->target_num,n_completed);
         }
     }
 }
@@ -501,7 +512,7 @@ static void log_chucast_reception_complete (FILE *f,const event_t *e)
     
     if (!config.terse) {
         assert(e);
-        fprintf(f,"0x%lx,0x%lx,non TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
+        fprintf(f,"0x%lx,0x%lx,chucast,TCP_XMIT_RECEIVED,0x%lx,%d,tgt,%d\n",
                 e->tllist.time,e->create_time,txr->cp,chunk_seq(txr->cp),
                 txr->target_num);
     }
