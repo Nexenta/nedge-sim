@@ -91,7 +91,6 @@ static void select_chucast_targets (chunkput_chucast_t *c)
             }
         }
         c->ch_targets[n] = t;
-        inc_target_total_queue(t);
         fprintf(log_f,",%d",t);
     }
     fprintf(log_f,"\n");
@@ -101,6 +100,11 @@ static void select_chucast_targets (chunkput_chucast_t *c)
 #define TCP_CHUNK_SETUP_BYTES (3*MINIMUM_TCPV6_BYTES+200)
 // 3 packets for TCP connectino setup plus minimal pre-transfer data
 // The cluster_trip_time must still be added to this.
+
+target_t *chucast_target (unsigned target_num)
+{
+    return &chucast_tgt[target_num].common;
+}
 
 static void next_tcp_replica_xmit (chunkput_chucast_t *cp,tick_t time_now)
 
@@ -119,6 +123,7 @@ static void next_tcp_replica_xmit (chunkput_chucast_t *cp,tick_t time_now)
         txr.cp = (chunk_put_handle_t)cp;
         r = cp->repnum++;
         txr.target_num = cp->ch_targets[r];
+        inc_target_total_queue(txr.target_num);
         insert_event(txr);
     }
 }
@@ -194,11 +199,6 @@ static void log_chucast_reception_ack (FILE *f,const event_t *e)
     fprintf(f,"0x%lx,0x%lx,non TCP_RECEPTION_ACK,0x%lx,%d,tgt,%d\n",
             e->tllist.time,e->create_time,tra->cp,chunk_seq(tra->cp),
             tra->target_num);
-}
-
-target_t *chucast_target (unsigned target_num)
-{
-    return &chucast_tgt[target_num].common;
 }
 
 void init_chucast_targets(unsigned n_targets)
