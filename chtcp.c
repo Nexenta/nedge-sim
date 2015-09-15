@@ -230,10 +230,60 @@ void release_chucast_targets (void)
     chucast_tgt = (chucast_target_t *)0;
 }
 
+static void complete_ongoing_reception (chucast_target_t *t,
+                                        ongoing_reception_t *ort)
+{
+    tcp_reception_ack_t tcp_ack;
+    disk_write_start_t dws;
+    tick_t write_start;
+    tick_t write_completion;
+    chucast_xmit_speed_t cxsp;
+    tick_t write_variance =
+        derived.chunk_disk_write_duration/config.write_variance;
+    tick_t write_duration = derived.chunk_disk_write_duration
+        - write_variance/2
+        +  (rand() % write_variance);
+    unsigned tgt_num = (unsigned)(t - chucast_tgt);
+
+    tcp_ack.event.create_time = now;
+    tcp_ack.event.tllist.time = now + config.cluster_trip_time;
+    tcp_ack.event.type = (event_type_t)CHUCAST_RECEPTION_ACK;
+    tcp_ack.cp = ort->cp;
+    tcp_ack.target_num = tgt_num;
+    tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
+    insert_event(tcp_ack);
+    
+    dws.event.create_time = now;
+    write_start = (t->last_disk_write_completion > now)
+        ? t->last_disk_write_completion
+        : now;
+    write_completion = write_start + write_duration;
+    
+    dws.event.create_time = now;
+    dws.event.tllist.time = write_start;
+    t->last_disk_write_completion = write_completion;
+    dws.expected_done = write_completion;
+    dws.event.type = DISK_WRITE_START;
+    dws.cp = ort->cp;
+    dws.target_num = tgt_num;
+    
+    insert_event(dws);
+    
+    tllist_remove(&ort->tllist);
+    memset(ort,0xFD,sizeof *ort);
+    free(ort);
+    
+    cxsp.event.type = (event_type_t)CHUCAST_XMIT_SPEED;
+    cxsp.target_num = (unsigned)(t - chucast_tgt);
+    cxsp.event.tllist.time = now + 2*config.cluster_trip_time;
+    cxsp.event.create_time = now;
+    insert_event(cxsp); // causes eventual -- t->n_ongoing_receptions
+}
+
 static void credit_ongoing_receptions (chucast_target_t *t,
                                        unsigned current_num_receptions)
 {
-    tllist_t *pnd;
+    tllist_t *pnd,*pnd_next;
     ongoing_reception_t *ort;
     tick_t  elapsed_time,credit;
     unsigned n;
@@ -241,29 +291,32 @@ static void credit_ongoing_receptions (chucast_target_t *t,
     assert (t);
     assert (t == &chucast_tgt[t-chucast_tgt]);
     
-    for (pnd = t->orhead.tllist.next,n=1;
-         pnd != &t->orhead.tllist;
-         pnd = pnd->next,++n)
-    {
-        ort = (ongoing_reception_t *)pnd;
-        
-        assert(current_num_receptions);
-        
-        assert(now >= ort->credited_thru);
-        elapsed_time = now - ort->credited_thru;
-        ort->credited_thru = now;
-
-        credit = elapsed_time / current_num_receptions;
-        if (!credit) credit = 1;
-        ort->credit += credit;
-        fprintf(log_f,"Credit,%lu,total,%lu,of,%lu,thru,%lu,target,%ld,ort,%p",
-                credit,ort->credit,derived.chunk_tcp_xmit_duration,
-                ort->credited_thru,t-chucast_tgt,ort);
-        fprintf(log_f,",n,%d,ongoing,%d",n,current_num_receptions);
-        fprintf(log_f,",cp,%d",chunk_seq(ort->cp));
-        fprintf(log_f,",elapsed_time,%lu\n",elapsed_time);
-        if (current_num_receptions > ort->max_ongoing_rx)
-            ort->max_ongoing_rx = current_num_receptions;
+    if (current_num_receptions) {
+        for (pnd = t->orhead.tllist.next,n=1;
+             pnd != &t->orhead.tllist;
+             pnd = pnd_next,++n)
+        {
+            ort = (ongoing_reception_t *)pnd;
+            pnd_next = pnd->next;
+            
+            assert(now >= ort->credited_thru);
+            elapsed_time = now - ort->credited_thru;
+            ort->credited_thru = now;
+            
+            credit = elapsed_time / current_num_receptions;
+            if (!credit) credit = 1;
+            ort->credit += credit;
+            fprintf(log_f,"Credit,%lu,total,%lu,of,%lu,thru,%lu,target,%ld,ort,%p",
+                    credit,ort->credit,derived.chunk_tcp_xmit_duration,
+                    ort->credited_thru,t-chucast_tgt,ort);
+            fprintf(log_f,",n,%d,ongoing,%d",n,current_num_receptions);
+            fprintf(log_f,",cp,%d",chunk_seq(ort->cp));
+            fprintf(log_f,",elapsed_time,%lu\n",elapsed_time);
+            if (current_num_receptions > ort->max_ongoing_rx)
+                ort->max_ongoing_rx = current_num_receptions;
+            if (ort->credit >= derived.chunk_tcp_xmit_duration)
+                complete_ongoing_reception(t,ort);
+        }
     }
 }
 
@@ -424,85 +477,16 @@ static void handle_chucast_reception_complete (const event_t *e)
 
 {
     const tcp_reception_complete_t *trc = (const tcp_reception_complete_t *)e;
-    chucast_xmit_speed_t cxsp;
-    tcp_reception_ack_t tcp_ack;
-    ongoing_reception_t *ort,*ort_next;
-    disk_write_start_t dws;
+    ongoing_reception_t *ort;
     chucast_target_t *t;
-    tick_t write_start,write_completion;
-    bool scheduled;
-    unsigned n;
-    unsigned n_completed = 0;
-    tick_t write_variance =
-        derived.chunk_disk_write_duration/config.write_variance;
-    tick_t write_duration = derived.chunk_disk_write_duration
-                        - write_variance/2
-                        +  (rand() % write_variance);
-    
     assert (e);
     
     t = chucast_tgt + trc->target_num;
-    tcp_ack.target_num = trc->target_num;
-    dws.target_num = trc->target_num;
     
-    assert(t->n_ongoing_receptions);
     credit_ongoing_receptions(t,t->n_ongoing_receptions);
-    
-    for (ort = (ongoing_reception_t *)t->orhead.tllist.next,n=0,scheduled=false;
-         &ort->tllist != &t->orhead.tllist;
-         ort = ort_next,++n)
-    {
-        ort_next = (ongoing_reception_t *)ort->tllist.next;
-        assert(ort_next);
-        assert(&ort_next->tllist==&t->orhead.tllist || ort_next->cp!=ort->cp);
-        
-        if (ort->credit < derived.chunk_tcp_xmit_duration) {
-            if (scheduled)
-                fprintf(log_f,"AlreadyScheduled,tgt,%d,ort,%p\n",
-                        trc->target_num,ort);
-            else {
-                schedule_tcp_reception_complete (trc->target_num,ort->cp);
-                scheduled = true;
-            }
-        }
-        else {
-            tcp_ack.event.create_time = now;
-            tcp_ack.event.tllist.time = now + config.cluster_trip_time;
-            tcp_ack.event.type = (event_type_t)CHUCAST_RECEPTION_ACK;
-            tcp_ack.cp = ort->cp;
-            tcp_ack.max_ongoing_rx = ort->max_ongoing_rx;
-            insert_event(tcp_ack);
-            
-            dws.event.create_time = e->tllist.time;
-            write_start = (t->last_disk_write_completion > now)
-                ? t->last_disk_write_completion
-                : now;
-            write_completion = write_start + write_duration;
-            
-            dws.event.create_time = now;
-            dws.event.tllist.time = write_start;
-            t->last_disk_write_completion = write_completion;
-            dws.expected_done = write_completion;
-            dws.event.type = DISK_WRITE_START;
-            dws.cp = ort->cp;
-            assert(chunk_seq(ort->cp));
-            
-            insert_event(dws);
-            
-            tllist_remove(&ort->tllist);
-            memset(ort,0xFD,sizeof *ort);
-            free(ort);
-            
-            cxsp.event.type = (event_type_t)CHUCAST_XMIT_SPEED;
-            cxsp.target_num = trc->target_num;
-            cxsp.event.tllist.time = now + 2*config.cluster_trip_time;
-            cxsp.event.create_time = e->tllist.time;
-            insert_event(cxsp); // causes eventual -- t->n_ongoing_receptions
-            ++n_completed;
-            if (n_completed > 1)
-                fprintf(log_f,"tgt,%u,n_completed,%u\n",
-                        trc->target_num,n_completed);
-        }
+    if (t->orhead.tllist.next != &t->orhead.tllist) {
+        ort = (ongoing_reception_t *)t->orhead.tllist.next;
+        schedule_tcp_reception_complete (trc->target_num,ort->cp);
     }
 }
 
