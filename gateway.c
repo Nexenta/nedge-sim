@@ -262,11 +262,13 @@ void report_duration_stats (void)
         if (n_tracked > track.max_tracked) n_tracked = track.max_tracked;
         
         qsort(track.durations,n_tracked,sizeof(tick_t),tick_compare);
-        
-        printf("median %3.2f 90%% %3.2f 99%% %3.2f\n",
+
+        printf("median %3.2f avg %3.2f 68%% %2.2f 95%% %3.2f 99%% %3.2f\n",
                track.durations[n_tracked*50/100]/ticks_per_ms,
-               track.durations[n_tracked*90/100]/ticks_per_ms,
-               track.durations[n_tracked*99/100]/ticks_per_ms);
+	       avg_ticks/ticks_per_ms,				// bell curve
+               track.durations[n_tracked*68/100]/ticks_per_ms,  // +- one standard deviation
+               track.durations[n_tracked*95/100]/ticks_per_ms,  // +- two standard deviations
+               track.durations[n_tracked*99/100]/ticks_per_ms); // +- three standard deviations
         
         total_write = (unsigned long)track.n_completions * config.chunk_size *
             config.n_replicas;
